@@ -22,11 +22,17 @@ static struct miscdevice fibers_dev = {
 	.mode = S_IALLUGO
 };
 
+struct idr fibers_pool;
+
+struct fiber_struct f1, f2;
+fid_t id1, id2;
+
 /*
  * This function is called when the module is loaded
  */
 int init_module(void)
 {
+	// Device registration for userspace-driver communication
 	int minor = misc_register(&fibers_dev);
 	if (minor < 0) {
 		pr_alert("[fibers: %s] Failed to register /dev/fibers\n",
@@ -35,6 +41,9 @@ int init_module(void)
 	}
 	pr_debug("[fibers: %s] Device created on /dev/%s\n", __FUNCTION__,
 		 DEVICE_NAME);
+
+	// Initialization of fibers pool idr
+	idr_init(&fibers_pool);
 
 	return SUCCESS;
 }
@@ -49,6 +58,9 @@ void cleanup_module(void)
 	 * Unregister the device
 	 */
 	misc_deregister(&fibers_dev);
+
+	// Destroy fibers pool idr
+	idr_destroy(&fibers_pool);
 }
 
 /*
@@ -98,6 +110,7 @@ static long device_ioctl(struct file *filp,
 	case IOCTL_CREATE_FIB:
 		break;
 	case IOCTL_SWITCH_FIB:
+		switch_fiber(ioctl_param);
 		break;
 	case IOCTL_FLS_ALLOC:
 		break;
