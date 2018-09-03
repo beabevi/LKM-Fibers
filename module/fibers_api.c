@@ -1,41 +1,124 @@
 #include "../include/module/fibers_api.h"
 
-static void __print_fiber_struct(struct fiber_struct *f)
+void fiber_init(struct fiber_struct *f, int fib_flags, struct create_data *data)
 {
-	pr_debug("[fibers: %s] f->owner= %d\n", __FUNCTION__, f->owner);
+	f->exec_context = *current_pt_regs();
+	f->flags = fib_flags;
+	if (fib_flags == FIB_STOPPED) {
+		// create_fiber called fiber_init
+		f->exec_context.sp = (unsigned long)data->stack;
+		f->exec_context.ip = (unsigned long)data->entry_point;
+		f->exec_context.di = (unsigned long)data->param;
+	}
 }
 
-void to_fiber(void)
+fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
 {
-	f1.owner = current->pid;
-	id1 = idr_alloc(&fibers_pool, &f1, 0, -1, GFP_KERNEL);
-	pr_debug("[fibers: %s] Created fiber1 with id1 = %lu\n", __FUNCTION__,
-		 id1);
+	//unsigned long flags;
+	fid_t id;
 
+	// xa_lock_irqsave(&fibers_pool.idr_rt, flags);
+	id = idr_alloc(pool, f, 0, -1, GFP_KERNEL);
+	// xa_unlock_irqrestore(&fibers_pool.idr_rt, flags);
+
+	return id;
 }
 
-void create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
+long to_fiber(void *fibers_pool)
 {
+	fid_t id;
+	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
+	if (unlikely(!f)) {
+		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
+			__FUNCTION__, current->pid);
+		return -1;
+	}
 
+	fiber_init(f, FIB_RUNNING, NULL);
+
+	id = fibers_pool_add(fibers_pool, f);
+	if (unlikely(id < 0)) {
+		kfree(f);
+		pr_warn("[fibers: %s] Failed to convert thread (%d) to fiber\n",
+			__FUNCTION__, current->pid);
+		return -1;
+	}
+	// Save current running fiber at the bottom of the kernel stack
+	// of the thread it is running on
+	current_fiber = f;
+
+	return id;
 }
 
-void switch_fiber(fid_t fid)
+long create_fiber(void *fibers_pool, struct create_data __user * udata)
 {
-	/**
-	int id = (int) fid;
-	struct fiber_struct *f = idr_find(&fibers_pool, id);
-	pr_debug("[fibers: %s] Got fid = %llx\n", __FUNCTION__, fid);
-	__print_fiber_struct(f);
-	**/
+	struct create_data data;
+	fid_t id;
+	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
 
-	struct pt_regs *regs1 = current_pt_regs();
-	if (regs1 == NULL)
+	if (unlikely(!f)) {
+		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
+			__FUNCTION__, current->pid);
+		return -1;
+	}
+
+	copy_from_user(&data, udata, sizeof(struct create_data));
+
+	fiber_init(f, FIB_STOPPED, &data);
+
+	id = fibers_pool_add(fibers_pool, f);
+	if (unlikely(id < 0)) {
+		kfree(f);
+		pr_warn("[fibers: %s] Failed to convert thread (%d) to fiber\n",
+			__FUNCTION__, current->pid);
+		return -1;
+	}
+	return id;
+}
+
+void switch_fiber(void *fibers_pool, fid_t fid)
+{
+	struct fiber_struct *next;
+	bool old;
+	struct pt_regs *regs;
+
+	rcu_read_lock();
+	next = idr_find(fibers_pool, fid);
+	rcu_read_unlock();
+
+	if (next == NULL) {
+		pr_warn("[fibers: %s] Failed to switch to %lu\n", __FUNCTION__,
+			fid);
+	}
+
+	old = test_and_set_bit(0, &(next->flags));
+	if (unlikely(old == FIB_RUNNING)) {
+		pr_warn("[fibers: %s] Switch attempted to running fiber %lu\n",
+			__FUNCTION__, fid);
 		return;
-	pr_debug("[fibers: %s] regs1->orig_ax = %lu\n", __FUNCTION__,
-		 regs1->orig_ax);
-	pr_debug("[fibers: %s] regs1->ip = %lx\n", __FUNCTION__, regs1->ip);
-	regs1->ip = fid;
+	}
 
+	regs = current_pt_regs();
+	current_fiber->exec_context = *regs;
+	*regs = next->exec_context;
+
+	// we must save to current->thread.fpu and restore from there
+	// otherwise warnings arise under dmesg as shown by code [here]
+	// (https://elixir.bootlin.com/linux/v4.19-rc1/source/arch/x86/kernel/fpu/core.c#L148)
+	// TODO: resolve this bug below
+
+	/*
+	   fpu__save(&current->thread.fpu);
+	   current_fiber->fpuregs = current->thread.fpu;
+	   current->thread.fpu = next->fpuregs;
+	   preempt_disable();
+	   fpu__restore(&current->thread.fpu);
+	   preempt_enable();
+	 */
+
+	test_and_clear_bit(0, &(current_fiber->flags));
+
+	current_fiber = next;
 }
 
 long fls_alloc(void)
@@ -48,7 +131,7 @@ bool fls_free(long index)
 	return 0;
 }
 
-void fls_set(long index, long long value)
+void fls_set(struct fls_set_data __user * data)
 {
 
 }

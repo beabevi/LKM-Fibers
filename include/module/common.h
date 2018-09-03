@@ -7,11 +7,15 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/sched/task_stack.h>
+#include <linux/types.h>
+#include <linux/spinlock.h>	// TODO: Move to linux/xarray.h
 
-typedef unsigned long fid_t;
+#include "../const.h"
 
 struct fiber_struct {
-	int owner;
+	unsigned long flags;	// RUNNING-STOPPED
+	struct pt_regs exec_context;
+	char fpuregs[512] __attribute__ ((aligned(16)));
 };
 
 #endif

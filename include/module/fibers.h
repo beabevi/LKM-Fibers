@@ -5,7 +5,6 @@
 #include <linux/stat.h>
 
 #include "common.h"
-#include "../const.h"
 #include "fibers_api.h"
 
 int init_module(void);

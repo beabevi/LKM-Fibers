@@ -22,11 +22,6 @@ static struct miscdevice fibers_dev = {
 	.mode = S_IALLUGO
 };
 
-struct idr fibers_pool;
-
-struct fiber_struct f1, f2;
-fid_t id1, id2;
-
 /*
  * This function is called when the module is loaded
  */
@@ -35,15 +30,12 @@ int init_module(void)
 	// Device registration for userspace-driver communication
 	int minor = misc_register(&fibers_dev);
 	if (minor < 0) {
-		pr_alert("[fibers: %s] Failed to register /dev/fibers\n",
-			 __FUNCTION__);
+		pr_alert("[fibers: %s] Failed to register /dev/%s\n",
+			 __FUNCTION__, DEVICE_NAME);
 		return minor;
 	}
 	pr_debug("[fibers: %s] Device created on /dev/%s\n", __FUNCTION__,
 		 DEVICE_NAME);
-
-	// Initialization of fibers pool idr
-	idr_init(&fibers_pool);
 
 	return SUCCESS;
 }
@@ -58,9 +50,6 @@ void cleanup_module(void)
 	 * Unregister the device
 	 */
 	misc_deregister(&fibers_dev);
-
-	// Destroy fibers pool idr
-	idr_destroy(&fibers_pool);
 }
 
 /*
@@ -73,13 +62,29 @@ void cleanup_module(void)
  */
 static int device_open(struct inode *inode, struct file *file)
 {
+	struct idr *fibers_pool;
 	pr_debug("[fibers: %s]\n", __FUNCTION__);
 
 	// Increments reference counter of the module to ensure that it is
 	// not removed while some process is using it
 	try_module_get(THIS_MODULE);
 
+	fibers_pool = kmalloc(sizeof(struct idr), GFP_USER);
+	if (!fibers_pool) {
+		return -1;
+	}
+	// Initialization of fibers pool idr
+	idr_init(fibers_pool);
+
+	file->private_data = fibers_pool;
+
 	return SUCCESS;
+}
+
+static int fib_free(int id, void *f, void *data)
+{
+	kfree(f);
+	return 0;
 }
 
 /*
@@ -88,6 +93,13 @@ static int device_open(struct inode *inode, struct file *file)
 static int device_release(struct inode *inode, struct file *file)
 {
 	pr_debug("[fibers: %s]\n", __FUNCTION__);
+
+	idr_for_each(file->private_data, fib_free, NULL);
+
+	// Destroy fibers pool idr
+	idr_destroy(file->private_data);
+	kfree(file->private_data);
+
 	/*
 	 * Decrement the usage count, or else once you opened the file, you'll
 	 * never get get rid of the module.
@@ -100,25 +112,28 @@ static int device_release(struct inode *inode, struct file *file)
 static long device_ioctl(struct file *filp,
 			 unsigned int ioctl_num, unsigned long ioctl_param)
 {
-	pr_debug("[fibers: %s] ioctl_num = %u\n", __FUNCTION__, ioctl_num);
-	pr_debug("[fibers: %s] ioctl_param = %lu\n", __FUNCTION__, ioctl_param);
-
 	switch (ioctl_num) {
 	case IOCTL_TO_FIB:
-		to_fiber();
+		return to_fiber(filp->private_data);
 		break;
 	case IOCTL_CREATE_FIB:
+		return create_fiber(filp->private_data,
+				    (struct create_data *)ioctl_param);
 		break;
 	case IOCTL_SWITCH_FIB:
-		switch_fiber(ioctl_param);
+		switch_fiber(filp->private_data, ioctl_param);
 		break;
 	case IOCTL_FLS_ALLOC:
+		return fls_alloc();
 		break;
 	case IOCTL_FLS_FREE:
+		return fls_free((long)ioctl_param);
 		break;
 	case IOCTL_FLS_SET:
+		fls_set((struct fls_set_data *)ioctl_param);
 		break;
 	case IOCTL_FLS_GET:
+		return fls_get((long)ioctl_param);
 		break;
 	}
 	return 0;

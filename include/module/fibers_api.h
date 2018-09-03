@@ -3,18 +3,19 @@
 
 #include <linux/ptrace.h>
 #include <linux/irq.h>
+#include <linux/rcupdate.h>
+#include <linux/uaccess.h>
+#include <asm/fpu/internal.h>
+
 #include "common.h"
 
-extern struct fiber_struct f1, f2;
-extern struct idr fibers_pool;
-extern fid_t id1, id2;
-
-void to_fiber(void);
-void create_fiber(size_t stack_size, void (*entry_point) (void *), void *param);
-void switch_fiber(fid_t fid);
+long to_fiber(void *fibers_pool);
+long create_fiber(void *fibers_pool, struct create_data __user * data);
+void switch_fiber(void *fibers_pool, fid_t fid);
 long fls_alloc(void);
 bool fls_free(long index);
-void fls_set(long index, long long value);
+void fls_set(struct fls_set_data __user * data);
 long long fls_get(long index);
 
+#define current_fiber (*((struct fiber_struct **) current->stack + sizeof(struct thread_info)))
 #endif
