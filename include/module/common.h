@@ -8,7 +8,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task_stack.h>
 #include <linux/types.h>
-#include <linux/spinlock.h>	// TODO: Move to linux/xarray.h
+#include <linux/xarray.h>
 
 #include "../const.h"
 

@@ -15,12 +15,12 @@ void fiber_init(struct fiber_struct *f, int fib_flags, struct create_data *data)
 
 fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
 {
-	//unsigned long flags;
+	unsigned long flags;
 	fid_t id;
 
-	// xa_lock_irqsave(&fibers_pool.idr_rt, flags);
+	xa_lock_irqsave(&pool->idr_rt, flags);
 	id = idr_alloc(pool, f, 0, -1, GFP_KERNEL);
-	// xa_unlock_irqrestore(&fibers_pool.idr_rt, flags);
+	xa_unlock_irqrestore(&pool->idr_rt, flags);
 
 	return id;
 }
@@ -29,6 +29,7 @@ long to_fiber(void *fibers_pool)
 {
 	fid_t id;
 	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
+
 	if (unlikely(!f)) {
 		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
 			__FUNCTION__, current->pid);
@@ -89,6 +90,13 @@ void switch_fiber(void *fibers_pool, fid_t fid)
 	struct fiber_struct *next;
 	bool old;
 	struct pt_regs *regs;
+
+	if (!current_fiber) {
+		pr_warn
+		    ("[fibers: %s] Attempt to switch not from fiber context\n",
+		     __FUNCTION__);
+		return;
+	}
 
 	rcu_read_lock();
 	next = idr_find(fibers_pool, fid);

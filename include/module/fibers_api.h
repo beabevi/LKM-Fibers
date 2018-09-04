@@ -17,5 +17,5 @@ bool fls_free(long index);
 void fls_set(struct fls_set_data __user * data);
 long long fls_get(long index);
 
-#define current_fiber (*((struct fiber_struct **) current->stack + sizeof(struct thread_info)))
+#define current_fiber (*((struct fiber_struct **) (((unsigned long)current->stack) + sizeof(struct thread_info))))
 #endif
