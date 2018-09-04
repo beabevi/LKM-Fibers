@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 fid_t id1, id2, id3;
+float glob_PI __attribute__((aligned(16)))= 3.14f;
 
 void f2(void * arg){
     int i;
@@ -17,9 +18,10 @@ void f2(void * arg){
         printf("switching to fiber %lu\n", id1);
         switch_fiber((void *) id1);
     }
-    // float e = 3.14f; // TODO: fix floating point usage failing
-    // printf("e = %f\n", e);
+    float e = 3.104f;
+    printf("%f\n", e);
     switch_fiber((void*) id3);
+    exit(0);
 }
 
 void f1(void * arg){
@@ -47,10 +49,17 @@ int main() {
     }
     //switch_fiber(bla);
 */
-    float PI = 3.14f;
-    id2 = (fid_t) create_fiber(2<<20, f2, (void *) 3);
-    id1 = (fid_t) create_fiber(2<<20, f1, (void *) 3);
+    register float PI;
+    id2 = (fid_t) create_fiber(2<<12, f2, (void *) 1);
+    id1 = (fid_t) create_fiber(2<<12, f1, (void *) 1);
     id3 = (fid_t) to_fiber();
+    if (id1 == -1 || id2 == -1 || id3 == -1) {
+        printf("failed to create fibers\n");
+        exit(1);
+    }
+    switch_fiber((void*) id2);
+    printf("%f\n", PI);
+    PI += id1;
     switch_fiber((void*) id2);
     printf("%f\n", PI);
 

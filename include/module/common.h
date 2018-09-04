@@ -15,7 +15,7 @@
 struct fiber_struct {
 	unsigned long flags;	// RUNNING-STOPPED
 	struct pt_regs exec_context;
-	char fpuregs[512] __attribute__ ((aligned(16)));
+	struct fpu fpuregs;
 };
 
 #endif

@@ -6,7 +6,7 @@ CFLAGS_fibers_api.o := -DDEBUG
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-	gcc examples/simple.c lib/fibers.c -lpthread
+	gcc -g examples/simple.c lib/fibers.c -lpthread
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean

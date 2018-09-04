@@ -10,6 +10,7 @@ void fiber_init(struct fiber_struct *f, int fib_flags, struct create_data *data)
 		f->exec_context.ip = (unsigned long)data->entry_point;
 		f->exec_context.di = (unsigned long)data->param;
 	}
+	f->fpuregs = current->thread.fpu;
 }
 
 fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
@@ -52,6 +53,7 @@ long to_fiber(void *fibers_pool)
 
 long create_fiber(void *fibers_pool, struct create_data __user * udata)
 {
+	unsigned long ret;
 	struct create_data data;
 	fid_t id;
 	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
@@ -62,7 +64,13 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 		return -1;
 	}
 
-	copy_from_user(&data, udata, sizeof(struct create_data));
+	ret = copy_from_user(&data, udata, sizeof(struct create_data));
+
+	if (ret) {
+		pr_warn("[fibers: %s] Could not copy create_data\n",
+			__FUNCTION__);
+		return -1;
+	}
 
 	fiber_init(f, FIB_STOPPED, &data);
 
@@ -102,20 +110,10 @@ void switch_fiber(void *fibers_pool, fid_t fid)
 	current_fiber->exec_context = *regs;
 	*regs = next->exec_context;
 
-	// we must save to current->thread.fpu and restore from there
-	// otherwise warnings arise under dmesg as shown by code [here]
-	// (https://elixir.bootlin.com/linux/v4.19-rc1/source/arch/x86/kernel/fpu/core.c#L148)
-	// TODO: resolve this bug below
-
-	/*
-	   fpu__save(&current->thread.fpu);
-	   current_fiber->fpuregs = current->thread.fpu;
-	   current->thread.fpu = next->fpuregs;
-	   preempt_disable();
-	   fpu__restore(&current->thread.fpu);
-	   preempt_enable();
-	 */
-
+	kernel_fpu_begin();
+	current_fiber->fpuregs = current->thread.fpu;
+	current->thread.fpu = next->fpuregs;
+	kernel_fpu_end();
 	test_and_clear_bit(0, &(current_fiber->flags));
 
 	current_fiber = next;

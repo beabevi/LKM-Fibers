@@ -65,16 +65,21 @@ void *create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
 	if (__fibers_file < 0)
 		__fibers_file = open("/dev/" DEVICE_NAME, O_NONBLOCK);
 	assert_fibers_open();
-	//void * stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_GROWSDOWN | MAP_ANONYMOUS, -1, 0);
-	void *stack = NULL;
-	posix_memalign(&stack, 16, stack_size);
+	void *stack =
+	    mmap(NULL, stack_size, PROT_WRITE | PROT_READ,
+		 MAP_PRIVATE | MAP_ANON, -1, 0);
+	//void *stack = NULL;
+	//posix_memalign(&stack, 16, stack_size);
 	if (stack == NULL) {
 		printf("Error in mmap\n");
 		return (void *)-1;
 	}
 
 	struct create_data data = {
-		.stack = (void *)(((unsigned long)stack) + stack_size),
+		// libc requires the stack to be aligned to a 16byte multiple on call
+		// following the calling conventions a 8 byte padding is required on
+		// top of the stack. 
+		.stack = (void *)(((unsigned long)stack) + stack_size - 8),
 		.entry_point = entry_point,
 		.param = param
 	};
