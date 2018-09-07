@@ -13,7 +13,7 @@
 #define IOCTL_FLS_ALLOC _IOR(MAJOR_NUM, 3, int)
 #define IOCTL_FLS_FREE _IOWR(MAJOR_NUM, 4, long)
 #define IOCTL_FLS_SET _IOR(MAJOR_NUM, 5, void*)
-#define IOCTL_FLS_GET _IOWR(MAJOR_NUM, 6, long)
+#define IOCTL_FLS_GET _IOWR(MAJOR_NUM, 6, void*)
 
 #define FIB_RUNNING 1
 #define FIB_STOPPED 0
@@ -24,7 +24,7 @@ struct create_data {
 	void *param;
 };
 
-struct fls_set_data {
+struct fls_data {
 	long index;
 	long long value;
 };

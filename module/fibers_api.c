@@ -1,7 +1,7 @@
 #include "../include/module/fibers_api.h"
 
-static long long	_fls[MAX_FLS];
-static long		fls_idx;
+static long long _fls[MAX_FLS];
+static long fls_idx = 0;
 
 void fiber_init(struct fiber_struct *f, int fib_flags, struct create_data *data)
 {
@@ -22,7 +22,7 @@ fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
 	fid_t id;
 
 	xa_lock_irqsave(&pool->idr_rt, flags);
-	id = idr_alloc(pool, f, 0, -1, GFP_KERNEL);
+	id = idr_alloc(pool, f, 1, -1, GFP_KERNEL);
 	xa_unlock_irqrestore(&pool->idr_rt, flags);
 
 	return id;
@@ -31,7 +31,8 @@ fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
 long to_fiber(void *fibers_pool)
 {
 	fid_t id;
-	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
+	struct fiber_struct *f =
+	    kmalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
 		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
@@ -60,7 +61,8 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 	unsigned long ret;
 	struct create_data data;
 	fid_t id;
-	struct fiber_struct *f = kmalloc(sizeof(struct fiber_struct), GFP_USER);
+	struct fiber_struct *f =
+	    kmalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
 		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
@@ -73,6 +75,7 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 	if (ret) {
 		pr_warn("[fibers: %s] Could not copy create_data\n",
 			__FUNCTION__);
+		kfree(f);
 		return -1;
 	}
 
@@ -88,7 +91,7 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 	return id;
 }
 
-void switch_fiber(void *fibers_pool, fid_t fid)
+long switch_fiber(void *fibers_pool, fid_t fid)
 {
 	struct fiber_struct *next;
 	bool old;
@@ -98,7 +101,7 @@ void switch_fiber(void *fibers_pool, fid_t fid)
 		pr_warn
 		    ("[fibers: %s] Attempt to switch not from fiber context\n",
 		     __FUNCTION__);
-		return;
+		return -1;
 	}
 
 	rcu_read_lock();
@@ -108,76 +111,78 @@ void switch_fiber(void *fibers_pool, fid_t fid)
 	if (next == NULL) {
 		pr_warn("[fibers: %s] Failed to switch to %lu\n", __FUNCTION__,
 			fid);
+		return -1;
 	}
 
 	old = test_and_set_bit(0, &(next->flags));
 	if (unlikely(old == FIB_RUNNING)) {
-		pr_warn("[fibers: %s] Switch attempted to running fiber %lu\n",
-			__FUNCTION__, fid);
-		return;
+		//pr_warn("[fibers: %s] Switch attempted to running fiber %lu\n",
+		//      __FUNCTION__, fid);
+		return -1;
 	}
 
 	regs = current_pt_regs();
 	current_fiber->exec_context = *regs;
 	*regs = next->exec_context;
+	regs->flags = current_fiber->exec_context.flags;
 
-	kernel_fpu_begin();
-	current_fiber->fpuregs = current->thread.fpu;
-	current->thread.fpu = next->fpuregs;
-	kernel_fpu_end();
+	preempt_disable();
+	copy_fpregs_to_fpstate(&current_fiber->fpuregs);
+	copy_kernel_to_fpregs(&(next->fpuregs.state));
+	preempt_enable();
+
 	test_and_clear_bit(0, &(current_fiber->flags));
 
 	current_fiber = next;
+
+	return 0;
 }
 
-
-long fls_alloc(void) {
-	long ret = __sync_fetch_and_add (&fls_idx, 1);
-	if(ret >= MAX_FLS)
+long fls_alloc(void)
+{
+	long ret = __sync_fetch_and_add(&fls_idx, 1);
+	if (ret >= MAX_FLS)
 		return -1;
 	return ret;
 }
 
 // Get a FLS value
-long long fls_get(long idx) {
-	return _fls[idx];
+long fls_get(struct fls_data __user * data)
+{
+	struct fls_data fsd;
+	unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_data));
+	if (ret) {
+		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		return -1;
+	}
+	fsd.value = _fls[fsd.index];
+
+	ret = copy_to_user(data, (char *)&fsd, sizeof(fsd));
+
+	if (ret) {
+		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		return -1;
+	}
+	return 0;
 }
 
 // Dummy: we don't actually free FLS here...
-bool fls_free(long idx) {
+bool fls_free(long idx)
+{
 	(void)idx;
 	return true;
 }
 
 // Store a value in FLS storage
-void fls_set(struct fls_set_data __user * data) {
-  struct fls_set_data fsd;
-  unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_set_data));
+long fls_set(struct fls_data __user * data)
+{
+	struct fls_data fsd;
+	unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_data));
 	if (ret) {
-		pr_warn("[fibers: %s] Could not copy fls_set_data\n",
-			__FUNCTION__);
-		return;
+		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		return -1;
 	}
 	_fls[fsd.index] = fsd.value;
+
+	return 0;
 }
-
-
-/* long fls_alloc(void) */
-/* { */
-	/* return 0; */
-/* } */
-
-/* bool fls_free(long index) */
-/* { */
-	/* return 0; */
-/* } */
-
-/* void fls_set(struct fls_set_data __user * data) */
-/* { */
-
-/* } */
-
-/* long long fls_get(long index) */
-/* { */
-	/* return 0; */
-/* } */

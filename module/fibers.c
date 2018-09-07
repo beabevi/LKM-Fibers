@@ -69,7 +69,7 @@ static int device_open(struct inode *inode, struct file *file)
 	// not removed while some process is using it
 	try_module_get(THIS_MODULE);
 
-	fibers_pool = kmalloc(sizeof(struct idr), GFP_USER);
+	fibers_pool = kmalloc(sizeof(struct idr), GFP_KERNEL);
 	if (!fibers_pool) {
 		return -1;
 	}
@@ -121,7 +121,7 @@ static long device_ioctl(struct file *filp,
 				    (struct create_data *)ioctl_param);
 		break;
 	case IOCTL_SWITCH_FIB:
-		switch_fiber(filp->private_data, ioctl_param);
+		return switch_fiber(filp->private_data, ioctl_param);
 		break;
 	case IOCTL_FLS_ALLOC:
 		return fls_alloc();
@@ -130,10 +130,10 @@ static long device_ioctl(struct file *filp,
 		return fls_free((long)ioctl_param);
 		break;
 	case IOCTL_FLS_SET:
-		fls_set((struct fls_set_data *)ioctl_param);
+		return fls_set((struct fls_data *)ioctl_param);
 		break;
 	case IOCTL_FLS_GET:
-		return fls_get((long)ioctl_param);
+		return fls_get((struct fls_data *)ioctl_param);
 		break;
 	}
 	return 0;

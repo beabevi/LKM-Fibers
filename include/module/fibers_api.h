@@ -11,11 +11,11 @@
 
 long to_fiber(void *fibers_pool);
 long create_fiber(void *fibers_pool, struct create_data __user * data);
-void switch_fiber(void *fibers_pool, fid_t fid);
+long switch_fiber(void *fibers_pool, fid_t fid);
 long fls_alloc(void);
 bool fls_free(long index);
-void fls_set(struct fls_set_data __user * data);
-long long fls_get(long index);
+long fls_set(struct fls_data __user * data);
+long fls_get(struct fls_data __user * data);
 
 #define MAX_FLS 4096
 

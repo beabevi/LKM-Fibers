@@ -55,7 +55,7 @@ static void main_loop(void *args) {
 		fprintf(stderr, "No more FLS storage available, aborting...\n");
 		exit(EXIT_FAILURE);
 	}
-	
+
 	FlsSetValue(q_idx, malloc(sizeof(calqueue)));
 	calqueue_init((calqueue *)FlsGetValue(q_idx));
 	event = malloc(sizeof(msg_t));
@@ -81,7 +81,6 @@ static void main_loop(void *args) {
 		}
 
 		ret = ProcessEvent(event, (lp_state_type *)FlsGetValue(state_idx), (calqueue *)FlsGetValue(q_idx));
-	printf("%f\n", 9.38f);
 	
 		if(event->type == INIT) {
 			FlsSetValue(state_idx, ret);
@@ -192,7 +191,7 @@ int main(int argc, char **argv) {
 	
 	init_complete = true;
 
-	main_loop((void *)1);
+	main_loop((void *) fibers[0]);
 	
 	return 0;
 }

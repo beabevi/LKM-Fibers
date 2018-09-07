@@ -1,9 +1,10 @@
 #include "../include/lib/fibers.h"
+#include "../util/log.h"
 
 #define assert_fibers_open() \
         do{              \
             if (__fibers_file < 0){ \
-                printf("fibers file is not open\n"); \
+                log_fatal("Fiber file is not open, exiting..."); \
             } \
         }while(0);
 
@@ -25,6 +26,7 @@ static int __fibers_file = -1;
 
 long fib_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
+	assert_fibers_open();
 	long res = 0;
 	if (cmd == IOCTL_SWITCH_FIB) {
 		asm volatile ("push %%rbx \n\t"
@@ -55,8 +57,11 @@ void *to_fiber(void)
 {
 	if (__fibers_file < 0)
 		__fibers_file = open("/dev/" DEVICE_NAME, O_NONBLOCK);
-	assert_fibers_open();
+
 	long ret = fib_ioctl(__fibers_file, IOCTL_TO_FIB, 0);
+	if (ret < 0) {
+		log_fatal("Couldn't convert thread to fiber");
+	}
 	return (void *)ret;
 }
 
@@ -64,14 +69,12 @@ void *create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
 {
 	if (__fibers_file < 0)
 		__fibers_file = open("/dev/" DEVICE_NAME, O_NONBLOCK);
-	assert_fibers_open();
+
 	void *stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ,
 			   MAP_PRIVATE | MAP_ANON, -1, 0);
-	//void *stack = NULL;
-	//posix_memalign(&stack, 16, stack_size);
+
 	if (stack == NULL) {
-		printf("Error in mmap\n");
-		return (void *)-1;
+		log_fatal("Couldn't allocate stack");
 	}
 
 	struct create_data data = {
@@ -86,56 +89,65 @@ void *create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
 
 	long ret =
 	    fib_ioctl(__fibers_file, IOCTL_CREATE_FIB, (unsigned long)&data);
+	if (ret < 0) {
+		log_fatal("Couldn't create fiber");
+	}
 	return (void *)ret;
 }
 
 void switch_fiber(void *fid)
 {
-	assert_fibers_open();
-	int ret =
+	long ret =
 	    fib_ioctl(__fibers_file, IOCTL_SWITCH_FIB, (unsigned long)fid);
 	if (ret < 0) {
-		printf("Error in ioctl\n");
+		// log_warn("Switch failed");
 	}
 }
 
 long fls_alloc(void)
 {
-	assert_fibers_open();
-	int ret = fib_ioctl(__fibers_file, IOCTL_FLS_ALLOC, 0);
+	long ret = fib_ioctl(__fibers_file, IOCTL_FLS_ALLOC, 0);
 	if (ret < 0) {
-		printf("Error in ioctl\n");
+		log_warn("Allocation failed");
 	}
+	return ret;
 }
 
 bool fls_free(long index)
 {
-	assert_fibers_open();
-	int ret = fib_ioctl(__fibers_file, IOCTL_FLS_FREE, index);
+	long ret = fib_ioctl(__fibers_file, IOCTL_FLS_FREE, index);
 	if (ret < 0) {
-		printf("Error in ioctl\n");
+		log_warn("Free failed");
+		return false;
 	}
+	return true;
 }
 
 void fls_set(long index, long long value)
 {
-	assert_fibers_open();
-	struct fls_set_data data = {
+	struct fls_data data = {
 		.index = index,
 		.value = value
 	};
 
-	int ret = fib_ioctl(__fibers_file, IOCTL_FLS_SET, (unsigned long)&data);
+	long ret =
+	    fib_ioctl(__fibers_file, IOCTL_FLS_SET, (unsigned long)&data);
 	if (ret < 0) {
-		printf("Error in ioctl\n");
+		log_warn("Setting failed");
 	}
 }
 
 long long fls_get(long index)
 {
-	assert_fibers_open();
-	int ret = fib_ioctl(__fibers_file, IOCTL_FLS_GET, index);
+	struct fls_data data = {
+		.index = index
+	};
+
+	long ret =
+	    fib_ioctl(__fibers_file, IOCTL_FLS_GET, (unsigned long)&data);
 	if (ret < 0) {
-		printf("Error in ioctl\n");
+		log_warn("Get failed");
+		return 0;
 	}
+	return data.value;
 }

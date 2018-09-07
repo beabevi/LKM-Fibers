@@ -6,9 +6,10 @@ SRC = 	src/calqueue.c \
 		src/numerical.c \
 		src/thread.c \
 		src/ult.c \
-		../../lib/fibers.c
+		../../util/log.c \
+		../../lib/fibers.c \
 		
-CFLAGS = -O3
+CFLAGS = -O3 -g
 EXEC = test
 OBJS := $(SRC:%.c=%.o)
 OBJS := $(OBJS:%.S=%.o)
