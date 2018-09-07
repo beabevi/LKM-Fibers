@@ -17,5 +17,7 @@ bool fls_free(long index);
 void fls_set(struct fls_set_data __user * data);
 long long fls_get(long index);
 
+#define MAX_FLS 4096
+
 #define current_fiber (*((struct fiber_struct **) (((unsigned long)current->stack) + sizeof(struct thread_info))))
 #endif

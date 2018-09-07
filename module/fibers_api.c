@@ -1,5 +1,8 @@
 #include "../include/module/fibers_api.h"
 
+static long long	_fls[MAX_FLS];
+static long		fls_idx;
+
 void fiber_init(struct fiber_struct *f, int fib_flags, struct create_data *data)
 {
 	f->exec_context = *current_pt_regs();
@@ -127,22 +130,54 @@ void switch_fiber(void *fibers_pool, fid_t fid)
 	current_fiber = next;
 }
 
-long fls_alloc(void)
-{
-	return 0;
+
+long fls_alloc(void) {
+	long ret = __sync_fetch_and_add (&fls_idx, 1);
+	if(ret >= MAX_FLS)
+		return -1;
+	return ret;
 }
 
-bool fls_free(long index)
-{
-	return 0;
+// Get a FLS value
+long long fls_get(long idx) {
+	return _fls[idx];
 }
 
-void fls_set(struct fls_set_data __user * data)
-{
-
+// Dummy: we don't actually free FLS here...
+bool fls_free(long idx) {
+	(void)idx;
+	return true;
 }
 
-long long fls_get(long index)
-{
-	return 0;
+// Store a value in FLS storage
+void fls_set(struct fls_set_data __user * data) {
+  struct fls_set_data fsd;
+  unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_set_data));
+	if (ret) {
+		pr_warn("[fibers: %s] Could not copy fls_set_data\n",
+			__FUNCTION__);
+		return;
+	}
+	_fls[fsd.index] = fsd.value;
 }
+
+
+/* long fls_alloc(void) */
+/* { */
+	/* return 0; */
+/* } */
+
+/* bool fls_free(long index) */
+/* { */
+	/* return 0; */
+/* } */
+
+/* void fls_set(struct fls_set_data __user * data) */
+/* { */
+
+/* } */
+
+/* long long fls_get(long index) */
+/* { */
+	/* return 0; */
+/* } */
