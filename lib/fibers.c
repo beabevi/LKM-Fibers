@@ -10,6 +10,8 @@
 
 static int __fibers_file = -1;
 
+static void __attribute__ ((constructor)) __file_opener();
+
 // https://stackoverflow.com/questions/42609267/ptregs-in-syscall-table
 // The dispatcher will take the fast path for the ioctl system call
 // not saving the registers below for performance reasons (callee-save).
@@ -24,9 +26,16 @@ static int __fibers_file = -1;
 //                   <----- switch_fiber(f1)
 // %rbx = ?
 
+static void __file_opener()
+{
+	__fibers_file = open("/dev/" DEVICE_NAME, 0);
+	if (__fibers_file < 0) {
+		log_fatal("Fiber file is not open, exiting...");
+	}
+}
+
 long fib_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
-	assert_fibers_open();
 	long res = 0;
 	if (cmd == IOCTL_SWITCH_FIB) {
 		asm volatile ("push %%rbx \n\t"
@@ -41,12 +50,12 @@ long fib_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 			      "pop %%r13 \n\t"
 			      "pop %%r12 \n\t"
 			      "pop %%rbp \n\t" "pop %%rbx \n\t":"=a" (res)
-			      :"0"(SYS_ioctl), "D"(fd), "S"(cmd), "d"(arg)
-		    );
+			      :"0"(SYS_ioctl), "D"(fd), "S"(cmd), "d"(arg):
+			      "memory");
 	} else {
 		asm volatile ("syscall \n\t":"=a" (res)
-			      :"0"(SYS_ioctl), "D"(fd), "S"(cmd), "d"(arg)
-		    );
+			      :"0"(SYS_ioctl), "D"(fd), "S"(cmd), "d"(arg):
+			      "memory");
 
 	}
 
@@ -55,9 +64,6 @@ long fib_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 
 void *to_fiber(void)
 {
-	if (__fibers_file < 0)
-		__fibers_file = open("/dev/" DEVICE_NAME, O_NONBLOCK);
-
 	long ret = fib_ioctl(__fibers_file, IOCTL_TO_FIB, 0);
 	if (ret < 0) {
 		log_fatal("Couldn't convert thread to fiber");
@@ -67,9 +73,6 @@ void *to_fiber(void)
 
 void *create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
 {
-	if (__fibers_file < 0)
-		__fibers_file = open("/dev/" DEVICE_NAME, O_NONBLOCK);
-
 	void *stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ,
 			   MAP_PRIVATE | MAP_ANON, -1, 0);
 

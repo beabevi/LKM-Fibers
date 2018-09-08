@@ -14,7 +14,7 @@ clean:
 
 instest:
 	sudo insmod fibers.ko
-	./examples/2018-fibers/test 5
+	./examples/2018-fibers/test 100
 
 test:
 	./examples/2018-fibers/test 100

@@ -22,7 +22,7 @@ fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
 	fid_t id;
 
 	xa_lock_irqsave(&pool->idr_rt, flags);
-	id = idr_alloc(pool, f, 1, -1, GFP_KERNEL);
+	id = idr_alloc(pool, f, 0, -1, GFP_KERNEL);
 	xa_unlock_irqrestore(&pool->idr_rt, flags);
 
 	return id;

@@ -63,7 +63,7 @@ void cleanup_module(void)
 static int device_open(struct inode *inode, struct file *file)
 {
 	struct idr *fibers_pool;
-	pr_debug("[fibers: %s]\n", __FUNCTION__);
+	pr_warn("[fibers: %s]\n", __FUNCTION__);
 
 	// Increments reference counter of the module to ensure that it is
 	// not removed while some process is using it
@@ -92,7 +92,7 @@ static int fib_free(int id, void *f, void *data)
  */
 static int device_release(struct inode *inode, struct file *file)
 {
-	pr_debug("[fibers: %s]\n", __FUNCTION__);
+	pr_warn("[fibers: %s]\n", __FUNCTION__);
 
 	idr_for_each(file->private_data, fib_free, NULL);
 
