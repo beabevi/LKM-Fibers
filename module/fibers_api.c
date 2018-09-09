@@ -13,6 +13,7 @@ static inline void fiber_init(struct fiber_struct *f, int fib_flags,
 		f->exec_context.sp = (unsigned long)data->stack;
 		f->exec_context.ip = (unsigned long)data->entry_point;
 		f->exec_context.di = (unsigned long)data->param;
+		f->exec_context.flags = 0L;
 	}
 }
 
@@ -148,14 +149,14 @@ long fls_alloc(void)
 long fls_get(struct fls_data __user * data)
 {
 	struct fls_data fsd;
-	unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_data));
+	unsigned long ret = copy_from_user(&fsd.index, &data->index, sizeof(long));
 	if (ret) {
 		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
 		return -1;
 	}
 	fsd.value = _fls[fsd.index];
 
-	ret = copy_to_user(data, (char *)&fsd, sizeof(fsd));
+	ret = copy_to_user(&data->value, &fsd.value, sizeof(long long));
 
 	if (ret) {
 		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
