@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
 	
 	init_complete = true;
 
-	main_loop((void *) fibers[0]);
+	main_loop((void *) 1);
 	
 	return 0;
 }
