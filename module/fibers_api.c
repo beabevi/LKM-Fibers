@@ -3,18 +3,15 @@
 static long long _fls[MAX_FLS];
 static long fls_idx = 0;
 
-static inline void fiber_init(struct fiber_struct *f, int fib_flags,
+static inline void fiber_init_stopped(struct fiber_struct *f,
 			      struct create_data *data)
 {
+	f->flags = FIB_STOPPED;
 	f->exec_context = *current_pt_regs();
-	f->flags = fib_flags;
-	if (fib_flags == FIB_STOPPED) {
-		// create_fiber called fiber_init
-		f->exec_context.sp = (unsigned long)data->stack;
-		f->exec_context.ip = (unsigned long)data->entry_point;
-		f->exec_context.di = (unsigned long)data->param;
-		f->exec_context.flags = 0L;
-	}
+	f->exec_context.sp = (unsigned long)data->stack;
+	f->exec_context.ip = (unsigned long)data->entry_point;
+	f->exec_context.di = (unsigned long)data->param;
+	f->exec_context.flags = 0L;
 }
 
 static fid_t fibers_pool_add(struct idr *pool, struct fiber_struct *f)
@@ -41,7 +38,7 @@ long to_fiber(void *fibers_pool)
 		return -1;
 	}
 
-	fiber_init(f, FIB_RUNNING, NULL);
+	f->flags = FIB_RUNNING;
 
 	id = fibers_pool_add(fibers_pool, f);
 	if (unlikely(id < 0)) {
@@ -63,7 +60,7 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 	struct create_data data;
 	fid_t id;
 	struct fiber_struct *f =
-	    kmalloc(sizeof(struct fiber_struct), GFP_KERNEL);
+	    kzalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
 		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
@@ -80,7 +77,7 @@ long create_fiber(void *fibers_pool, struct create_data __user * udata)
 		return -1;
 	}
 
-	fiber_init(f, FIB_STOPPED, &data);
+	fiber_init_stopped(f, &data);
 
 	id = fibers_pool_add(fibers_pool, f);
 	if (unlikely(id < 0)) {
