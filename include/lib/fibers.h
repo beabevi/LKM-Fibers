@@ -8,6 +8,8 @@
 #include <sys/syscall.h>	// SYS_ioctl
 #include <fcntl.h>		// open()
 #include <sys/mman.h>		// mmap()
+#include <unistd.h>		// close()
+#include <pthread.h>	// pthread_atfork()
 #include "../const.h"
 
 void *to_fiber(void);

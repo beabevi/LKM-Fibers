@@ -1,18 +1,44 @@
 #include "../include/lib/fibers.h"
 #include "../util/log.h"
 
-#define assert_fibers_open() \
-        do{              \
-            if (__fibers_file < 0){ \
-                log_fatal("Fiber file is not open, exiting..."); \
-            } \
-        }while(0);
-
 static int __fibers_file = -1;
 
 static void __attribute__ ((constructor)) __file_opener();
 
-// https://stackoverflow.com/questions/42609267/ptregs-in-syscall-table
+/*
+* In case of a fork() `struct file`s of open files of the parent
+* are shared by the child (with maybe different file descriptor number).
+* We must close the fibers file descriptor in the child by registering
+* this routine at fork to ensure that two different processes do not share
+* the fiber pool contained in `private_data` of the `struct file` associated
+* to the /dev/fibers file.
+*
+* More on file descriptors inheritance:
+* https://stackoverflow.com/a/11734354
+*/
+
+static void __fork_handler()
+{
+	int err = close(__fibers_file);
+	__fibers_file = open("/dev/" DEVICE_NAME, 0);
+	if (__fibers_file < 0) {
+		log_fatal("Fiber file is not open, exiting...");
+	}
+}
+
+static void __file_opener()
+{
+	__fibers_file = open("/dev/" DEVICE_NAME, 0);
+	if (__fibers_file < 0) {
+		log_fatal("Fiber file is not open, exiting...");
+	}
+	int err = pthread_atfork(NULL, NULL, __fork_handler);
+	if (err) {
+		log_fatal("Couldn't register atfork handler");
+	}
+}
+
+// https://stackoverflow.com/a/48218706
 // The dispatcher will take the fast path for the ioctl system call
 // not saving the registers below for performance reasons (callee-save).
 //
@@ -25,14 +51,6 @@ static void __attribute__ ((constructor)) __file_opener();
 // switch_fiber(f2)  -----> %rbx := 2
 //                   <----- switch_fiber(f1)
 // %rbx = ?
-
-static void __file_opener()
-{
-	__fibers_file = open("/dev/" DEVICE_NAME, 0);
-	if (__fibers_file < 0) {
-		log_fatal("Fiber file is not open, exiting...");
-	}
-}
 
 long fib_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
