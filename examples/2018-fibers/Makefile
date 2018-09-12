@@ -8,8 +8,9 @@ SRC = 	src/calqueue.c \
 		src/ult.c \
 		../../util/log.c \
 		../../lib/fibers.c \
-		
-CFLAGS = -O3 -g
+
+# -fno-omit-frame-pointer allows for better profiling through `perf`
+CFLAGS = -O3 -g -fno-omit-frame-pointer
 EXEC = test
 OBJS := $(SRC:%.c=%.o)
 OBJS := $(OBJS:%.S=%.o)
