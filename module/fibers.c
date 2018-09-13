@@ -1,9 +1,7 @@
 #include "../include/module/fibers.h"
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR
-    ("Beatrice Bevilacqua <beatricebevilacqua1995@gmail.com> and Anxhelo Xhebraj <angelogebrai@gmail.com>");
-MODULE_DESCRIPTION("");		// TODO: change module description
+#include <linux/kprobes.h>
+#include <linux/string.h>
 
 /*
  * Global variables are declared as static, so are global within the file.
@@ -22,11 +20,38 @@ static struct miscdevice fibers_dev = {
 	.mode = S_IALLUGO
 };
 
+static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+{
+	struct file *f = (struct file *)regs->di;
+	pr_warn("%s\n", f->f_path.dentry->d_iname);
+	return 0;
+}
+
+struct kprobe kp = {
+	.pre_handler = handler_pre,
+	.fault_handler = NULL,
+	.post_handler = NULL,
+	.symbol_name = "proc_tgid_base_readdir",
+	.addr = 0
+};
+
+struct proc_dir_entry *fibers_dir;
+
+void initialize_proc(void)
+{
+	fibers_dir = proc_mkdir(".fibers", NULL);
+	if (fibers_dir == NULL) {
+		pr_warn("Failed proc\n");
+		proc_remove(fibers_dir);
+	}
+}
+
 /*
  * This function is called when the module is loaded
  */
 int init_module(void)
 {
+	int ret;
 	// Device registration for userspace-driver communication
 	int minor = misc_register(&fibers_dev);
 	if (minor < 0) {
@@ -34,6 +59,14 @@ int init_module(void)
 			 __FUNCTION__, DEVICE_NAME);
 		return minor;
 	}
+
+	ret = register_kprobe(&kp);
+	if (ret) {
+		return SUCCESS;
+	}
+
+	initialize_proc();
+
 	return SUCCESS;
 }
 
@@ -45,6 +78,8 @@ void cleanup_module(void)
 	/*
 	 * Unregister the device
 	 */
+	unregister_kprobe(&kp);
+	proc_remove(fibers_dir);
 	misc_deregister(&fibers_dev);
 }
 
@@ -58,20 +93,37 @@ void cleanup_module(void)
  */
 static int device_open(struct inode *inode, struct file *file)
 {
-	struct idr *fibers_pool;
+#define buf_len 16
+	struct fibers_data *fibdata;
+	char buf[buf_len];
+	int ret;
 
 	// Increments reference counter of the module to ensure that it is
 	// not removed while some process is using it
 	try_module_get(THIS_MODULE);
 
-	fibers_pool = kmalloc(sizeof(struct idr), GFP_KERNEL);
-	if (!fibers_pool) {
+	fibdata = kmalloc(sizeof(struct fibers_data), GFP_KERNEL);
+	if (!fibdata) {
+		return -1;
+	}
+
+	ret = snprintf(buf, buf_len, "%d", current->tgid);
+	if (!ret) {
+		pr_warn("[fibers: %s] Could not read tgid\n", __FUNCTION__);
+		kfree(fibdata);
+		return -1;
+	}
+	fibdata->base = proc_mkdir(buf, fibers_dir);
+	if (!fibdata->base) {
+		pr_warn("[fibers: %s] Could not create proc file\n",
+			__FUNCTION__);
+		kfree(fibdata);
 		return -1;
 	}
 	// Initialization of fibers pool idr
-	idr_init(fibers_pool);
+	idr_init(&fibdata->fibers_pool);
 
-	file->private_data = fibers_pool;
+	file->private_data = fibdata;
 
 	return SUCCESS;
 }
@@ -88,10 +140,13 @@ static int fib_free(int id, void *f, void *data)
 static int device_release(struct inode *inode, struct file *file)
 {
 
-	idr_for_each(file->private_data, fib_free, NULL);
+	idr_for_each(&((struct fibers_data *)file->private_data)->fibers_pool,
+		     fib_free, NULL);
 
 	// Destroy fibers pool idr
-	idr_destroy(file->private_data);
+	idr_destroy(&((struct fibers_data *)file->private_data)->fibers_pool);
+	proc_remove(((struct fibers_data *)file->private_data)->base);
+
 	kfree(file->private_data);
 
 	/*
@@ -108,27 +163,26 @@ static long device_ioctl(struct file *filp,
 {
 	switch (ioctl_num) {
 	case IOCTL_TO_FIB:
-		return to_fiber(filp->private_data);
-		break;
+		return to_fiber((struct fibers_data *)filp->private_data);
 	case IOCTL_CREATE_FIB:
-		return create_fiber(filp->private_data,
+		return create_fiber((struct fibers_data *)filp->private_data,
 				    (struct create_data *)ioctl_param);
-		break;
 	case IOCTL_SWITCH_FIB:
-		return switch_fiber(filp->private_data, ioctl_param);
-		break;
+		return switch_fiber((struct fibers_data *)filp->private_data,
+				    ioctl_param);
 	case IOCTL_FLS_ALLOC:
 		return fls_alloc();
-		break;
 	case IOCTL_FLS_FREE:
 		return fls_free((long)ioctl_param);
-		break;
 	case IOCTL_FLS_SET:
 		return fls_set((struct fls_data *)ioctl_param);
-		break;
 	case IOCTL_FLS_GET:
 		return fls_get((struct fls_data *)ioctl_param);
-		break;
 	}
-	return 0;
+	return -1;
 }
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR
+    ("Beatrice Bevilacqua <beatricebevilacqua1995@gmail.com> and Anxhelo Xhebraj <angelogebrai@gmail.com>");
+MODULE_DESCRIPTION("");		// TODO: change module description

@@ -9,9 +9,10 @@
 
 #include "common.h"
 
-long to_fiber(void *fibers_pool);
-long create_fiber(void *fibers_pool, struct create_data __user * data);
-long switch_fiber(void *fibers_pool, fid_t fid);
+long to_fiber(struct fibers_data *fibdata);
+long create_fiber(struct fibers_data *fibdata,
+		  struct create_data __user * data);
+long switch_fiber(struct fibers_data *fibdata, fid_t fid);
 long fls_alloc(void);
 bool fls_free(long index);
 long fls_set(struct fls_data __user * data);
