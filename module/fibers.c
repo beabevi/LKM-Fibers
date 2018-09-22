@@ -1,13 +1,14 @@
 #include "../include/module/fibers.h"
 
-#include <linux/kprobes.h>
 #include <linux/string.h>
+#include <linux/fs.h>
 
 /*
  * Global variables are declared as static, so are global within the file.
  */
 
 static struct file_operations fibers_fops = {
+	.owner = THIS_MODULE,
 	.open = device_open,
 	.release = device_release,
 	.unlocked_ioctl = device_ioctl
@@ -20,21 +21,6 @@ static struct miscdevice fibers_dev = {
 	.mode = S_IALLUGO
 };
 
-static int handler_pre(struct kprobe *p, struct pt_regs *regs)
-{
-	struct file *f = (struct file *)regs->di;
-	pr_warn("%s\n", f->f_path.dentry->d_iname);
-	return 0;
-}
-
-struct kprobe kp = {
-	.pre_handler = handler_pre,
-	.fault_handler = NULL,
-	.post_handler = NULL,
-	.symbol_name = "proc_tgid_base_readdir",
-	.addr = 0
-};
-
 struct proc_dir_entry *fibers_dir;
 
 void initialize_proc(void)
@@ -44,6 +30,7 @@ void initialize_proc(void)
 		pr_warn("Failed proc\n");
 		proc_remove(fibers_dir);
 	}
+	hijack_symbols();
 }
 
 /*
@@ -51,18 +38,12 @@ void initialize_proc(void)
  */
 int init_module(void)
 {
-	int ret;
 	// Device registration for userspace-driver communication
 	int minor = misc_register(&fibers_dev);
 	if (minor < 0) {
 		pr_alert("[fibers: %s] Failed to register /dev/%s\n",
 			 __FUNCTION__, DEVICE_NAME);
 		return minor;
-	}
-
-	ret = register_kprobe(&kp);
-	if (ret) {
-		return SUCCESS;
 	}
 
 	initialize_proc();
@@ -78,9 +59,9 @@ void cleanup_module(void)
 	/*
 	 * Unregister the device
 	 */
-	unregister_kprobe(&kp);
 	proc_remove(fibers_dir);
 	misc_deregister(&fibers_dev);
+	restore_symbols();
 }
 
 /*
@@ -97,10 +78,6 @@ static int device_open(struct inode *inode, struct file *file)
 	struct fibers_data *fibdata;
 	char buf[buf_len];
 	int ret;
-
-	// Increments reference counter of the module to ensure that it is
-	// not removed while some process is using it
-	try_module_get(THIS_MODULE);
 
 	fibdata = kmalloc(sizeof(struct fibers_data), GFP_KERNEL);
 	if (!fibdata) {
@@ -148,12 +125,6 @@ static int device_release(struct inode *inode, struct file *file)
 	proc_remove(((struct fibers_data *)file->private_data)->base);
 
 	kfree(file->private_data);
-
-	/*
-	 * Decrement the usage count, or else once you opened the file, you'll
-	 * never get get rid of the module.
-	 */
-	module_put(THIS_MODULE);
 
 	return SUCCESS;
 }

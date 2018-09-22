@@ -1,5 +1,5 @@
 obj-m += fibers.o
-fibers-objs := ./module/fibers.o ./module/fibers_api.o
+fibers-objs := module/fibers.o module/fibers_api.o module/pork.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

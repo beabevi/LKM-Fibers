@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "fibers_api.h"
+#include "pork.h"
 
 int init_module(void);
 void cleanup_module(void);
