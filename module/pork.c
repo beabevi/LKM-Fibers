@@ -38,9 +38,26 @@ static proc_tgid_base_readdir_t orig_proc_tgid_base_readdir;
 static struct file_operations *proc_tgid_base_operations;
 static struct inode_operations *proc_tgid_base_inode_operations;
 
-static struct inode_operations *proc_pid_link_inode_operations;
-
 static struct pid_entry fibers_link;
+
+enum hijacked_syms {
+	PROC_PID_LINK_INODE_OPERATIONS,
+	PROC_FILL_CACHE,
+	PROC_PIDENT_INSTANTIATE,
+	PROC_TGID_BASE_OPERATIONS,
+	PROC_TGID_BASE_INODE_OPERATIONS,
+	HIJACKED_SYMS_MAX
+};
+
+static const char *hijacked_syms_names[] = {
+	"proc_pid_link_inode_operations",
+	"proc_fill_cache",
+	"proc_pident_instantiate",
+	"proc_tgid_base_operations",
+	"proc_tgid_base_inode_operations"
+};
+
+static void *syms[HIJACKED_SYMS_MAX];
 
 static unsigned long cr0;
 
@@ -50,7 +67,7 @@ static void LNK(struct pid_entry *pe, const char *name, int name_len,
 	pe->name = name;
 	pe->len = name_len;
 	pe->mode = (S_IFLNK | S_IRWXUGO);
-	pe->iop = proc_pid_link_inode_operations;
+	pe->iop = syms[PROC_PID_LINK_INODE_OPERATIONS];
 	pe->fop = NULL;
 	pe->op.proc_get_link = get_link;
 }
@@ -167,37 +184,25 @@ static inline void unprotect_memory(void)
 
 void hijack_symbols(void)
 {
+	int i = 0;
 
-	proc_pid_link_inode_operations =
-	    (void *)kallsyms_lookup_name("proc_pid_link_inode_operations");
-	if (!proc_pid_link_inode_operations) {
-		warn("Failed retrieving proc_pid_link_inode_operations\n");
+	for (i = 0; i < HIJACKED_SYMS_MAX; i++) {
+		syms[i] = (void *)kallsyms_lookup_name(hijacked_syms_names[i]);
+		if (!syms[i]) {
+			warn("Failed retrieving symbol %s",
+			     hijacked_syms_names[i]);
+		}
 	}
 
 	LNK(&fibers_link, "fibers", 6, proc_fibers_link);
 
-	proc_fill_cache = (void *)kallsyms_lookup_name("proc_fill_cache");
-	if (!proc_fill_cache) {
-		warn("Failed retrieving proc_fill_cache\n");
-	}
+	proc_fill_cache = syms[PROC_FILL_CACHE];
 
-	proc_pident_instantiate =
-	    (void *)kallsyms_lookup_name("proc_pident_instantiate");
-	if (!proc_pident_instantiate) {
-		warn("Failed retrieving proc_pident_instantiate\n");
-	}
+	proc_pident_instantiate = syms[PROC_PIDENT_INSTANTIATE];
 
-	proc_tgid_base_operations =
-	    (void *)kallsyms_lookup_name("proc_tgid_base_operations");
-	if (!proc_tgid_base_operations) {
-		warn("Failed retrieving proc_tgid_base_operations\n");
-	}
+	proc_tgid_base_operations = syms[PROC_TGID_BASE_OPERATIONS];
 
-	proc_tgid_base_inode_operations =
-	    (void *)kallsyms_lookup_name("proc_tgid_base_inode_operations");
-	if (!proc_tgid_base_inode_operations) {
-		warn("Failed retrieving proc_tgid_base_inode_operations\n");
-	}
+	proc_tgid_base_inode_operations = syms[PROC_TGID_BASE_INODE_OPERATIONS];
 
 	cr0 = read_cr0();
 	unprotect_memory();
