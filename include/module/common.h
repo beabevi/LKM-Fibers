@@ -11,6 +11,7 @@
 #include <linux/xarray.h>
 #include <linux/proc_fs.h>
 
+#include <klog.h>
 #include "../const.h"
 
 struct fiber_struct {

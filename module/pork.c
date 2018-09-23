@@ -64,8 +64,7 @@ static int proc_fibers_link(struct dentry *dentry, struct path *path)
 	ret = kern_path(buf, LOOKUP_FOLLOW, path);
 	path_get(path);
 	if (ret) {
-		pr_warn("[fibers: %s] Couldn't find the directory %s\n",
-			__FUNCTION__, buf);
+		warn("Couldn't find the directory %s\n", buf);
 		return 0;
 	}
 
@@ -87,7 +86,7 @@ static int wrap_proc_tgid_base_readdir(struct file *file,
 	if (ctx->pos > 0)
 		return 0;
 
-	if ((orig_ret  = orig_proc_tgid_base_readdir(file, ctx))) {
+	if ((orig_ret = orig_proc_tgid_base_readdir(file, ctx))) {
 		return orig_ret;
 	}
 
@@ -99,20 +98,19 @@ static int wrap_proc_tgid_base_readdir(struct file *file,
 
 	ret = kstrtouint(file->f_path.dentry->d_iname, 10, &pid);
 	if (ret) {
-		pr_warn("[fibers: %s] Couldn't convert string to pid\n",
-			__FUNCTION__);
+		warn("Couldn't convert string to pid\n");
 		return orig_ret;
 	}
 
 	task = get_pid_task(find_vpid(pid), PIDTYPE_PID);
 
 	if (!task) {
-		pr_warn("NO TASK FOUUUUND\n");
+		warn("No task found\n");
 		return orig_ret;
 	}
 
 	if (proc_fill_cache(file, ctx, fibers_link.name, fibers_link.len,
-			proc_pident_instantiate, task, &fibers_link)) {
+			    proc_pident_instantiate, task, &fibers_link)) {
 		ctx->pos++;
 	}
 	put_task_struct(task);
@@ -142,14 +140,13 @@ static struct dentry *wrap_proc_tgid_base_lookup(struct inode *dir,
 
 	ret = kstrtouint(dentry->d_parent->d_name.name, 10, &pid);
 	if (ret) {
-		pr_warn("[fibers: %s] Couldn't convert string to pid\n",
-			__FUNCTION__);
+		warn("Couldn't convert string to pid\n");
 		return ERR_PTR(-ENOENT);
 	}
 	task = get_pid_task(find_vpid(pid), PIDTYPE_PID);
 
 	if (!task) {
-		pr_warn("NO TASK FOUUUUND\n");
+		warn("No task found\n");
 		return ERR_PTR(-ENOENT);
 	}
 
@@ -174,41 +171,32 @@ void hijack_symbols(void)
 	proc_pid_link_inode_operations =
 	    (void *)kallsyms_lookup_name("proc_pid_link_inode_operations");
 	if (!proc_pid_link_inode_operations) {
-		pr_warn
-		    ("[fibers: %s] Failed retrieving proc_pid_link_inode_operations\n",
-		     __FUNCTION__);
+		warn("Failed retrieving proc_pid_link_inode_operations\n");
 	}
 
 	LNK(&fibers_link, "fibers", 6, proc_fibers_link);
 
 	proc_fill_cache = (void *)kallsyms_lookup_name("proc_fill_cache");
 	if (!proc_fill_cache) {
-		pr_warn("[fibers: %s] Failed retrieving proc_fill_cache\n",
-			__FUNCTION__);
+		warn("Failed retrieving proc_fill_cache\n");
 	}
 
 	proc_pident_instantiate =
 	    (void *)kallsyms_lookup_name("proc_pident_instantiate");
 	if (!proc_pident_instantiate) {
-		pr_warn
-		    ("[fibers: %s] Failed retrieving proc_pident_instantiate\n",
-		     __FUNCTION__);
+		warn("Failed retrieving proc_pident_instantiate\n");
 	}
 
 	proc_tgid_base_operations =
 	    (void *)kallsyms_lookup_name("proc_tgid_base_operations");
 	if (!proc_tgid_base_operations) {
-		pr_warn
-		    ("[fibers: %s] Failed retrieving proc_tgid_base_operations\n",
-		     __FUNCTION__);
+		warn("Failed retrieving proc_tgid_base_operations\n");
 	}
 
 	proc_tgid_base_inode_operations =
 	    (void *)kallsyms_lookup_name("proc_tgid_base_inode_operations");
 	if (!proc_tgid_base_inode_operations) {
-		pr_warn
-		    ("[fibers: %s] Failed retrieving proc_tgid_base_inode_operations\n",
-		     __FUNCTION__);
+		warn("Failed retrieving proc_tgid_base_inode_operations\n");
 	}
 
 	cr0 = read_cr0();

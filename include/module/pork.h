@@ -6,6 +6,8 @@
 #include <linux/namei.h>
 #include <linux/sched/task.h>
 
+#include <klog.h>
+
 void hijack_symbols(void);
 void restore_symbols(void);
 

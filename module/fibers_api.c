@@ -27,8 +27,7 @@ ssize_t fiber_read_info(struct file *filp, char *buffer, size_t buff_len,
 	n_bytes = strlen(out);
 	ret = copy_to_user(buffer, out, n_bytes);
 	if (ret) {
-		pr_warn("[fibers: %s] Could not copy fiber's data\n",
-			__FUNCTION__);
+		warn("Could not copy fiber's data\n");
 		return ret;
 	}
 
@@ -78,13 +77,12 @@ static fid_t fibers_pool_add(struct fibers_data *fibdata,
 
 	ret = snprintf(buf, buf_len, "%lu", id);
 	if (!ret) {
-		pr_warn("[fibers: %s] Could not read fid\n", __FUNCTION__);
+		warn("Could not read fid\n");
 		return -1;
 	}
 	proc_file = proc_create_data(buf, S_IALLUGO, fibdata->base, &fops, f);
 	if (!proc_file) {
-		pr_warn("[fibers: %s] Could not create proc file\n",
-			__FUNCTION__);
+		warn("Could not create proc file\n");
 		return -1;
 	}
 
@@ -98,8 +96,7 @@ long to_fiber(struct fibers_data *fibdata)
 	    kmalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
-		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
-			__FUNCTION__, current->pid);
+		warn("Failed fiber_struct allocation (%d)\n", current->pid);
 		return -1;
 	}
 
@@ -109,8 +106,7 @@ long to_fiber(struct fibers_data *fibdata)
 	id = fibers_pool_add(fibdata, f);
 	if (unlikely(id < 0)) {
 		kfree(f);
-		pr_warn("[fibers: %s] Failed to convert thread (%d) to fiber\n",
-			__FUNCTION__, current->pid);
+		warn("Failed to convert thread (%d) to fiber\n", current->pid);
 		return -1;
 	}
 	// Save current running fiber at the bottom of the kernel stack
@@ -130,16 +126,14 @@ long create_fiber(struct fibers_data *fibdata,
 	    kzalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
-		pr_warn("[fibers: %s] Failed create struct fiber (%d)\n",
-			__FUNCTION__, current->pid);
+		warn("Failed create struct fiber (%d)\n", current->pid);
 		return -1;
 	}
 
 	ret = copy_from_user(&data, udata, sizeof(struct create_data));
 
 	if (unlikely(ret)) {
-		pr_warn("[fibers: %s] Could not copy create_data\n",
-			__FUNCTION__);
+		warn("Could not copy create_data\n");
 		kfree(f);
 		return -1;
 	}
@@ -149,8 +143,7 @@ long create_fiber(struct fibers_data *fibdata,
 	id = fibers_pool_add(fibdata, f);
 	if (unlikely(id < 0)) {
 		kfree(f);
-		pr_warn("[fibers: %s] Failed to convert thread (%d) to fiber\n",
-			__FUNCTION__, current->pid);
+		warn("Failed to convert thread (%d) to fiber\n", current->pid);
 		return -1;
 	}
 	return id;
@@ -165,9 +158,7 @@ long switch_fiber(struct fibers_data *fibdata, fid_t fid)
 	prev = current_fiber;
 
 	if (unlikely(!prev)) {
-		pr_warn
-		    ("[fibers: %s] Attempt to switch not from fiber context\n",
-		     __FUNCTION__);
+		warn("Attempt to switch not from fiber context\n");
 		return -1;
 	}
 
@@ -176,8 +167,7 @@ long switch_fiber(struct fibers_data *fibdata, fid_t fid)
 	rcu_read_unlock();
 
 	if (unlikely(next == NULL)) {
-		pr_warn("[fibers: %s] Failed to switch to %lu\n", __FUNCTION__,
-			fid);
+		warn("Failed to switch to %lu\n", fid);
 		return -1;
 	}
 
@@ -222,7 +212,7 @@ long fls_get(struct fls_data __user * data)
 	unsigned long ret =
 	    copy_from_user(&fsd.index, &data->index, sizeof(long));
 	if (ret) {
-		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		warn("Could not copy fls_data\n");
 		return -1;
 	}
 	fsd.value = _fls[fsd.index];
@@ -230,7 +220,7 @@ long fls_get(struct fls_data __user * data)
 	ret = copy_to_user(&data->value, &fsd.value, sizeof(long long));
 
 	if (ret) {
-		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		warn("Could not copy fls_data\n");
 		return -1;
 	}
 	return 0;
@@ -249,7 +239,7 @@ long fls_set(struct fls_data __user * data)
 	struct fls_data fsd;
 	unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_data));
 	if (ret) {
-		pr_warn("[fibers: %s] Could not copy fls_data\n", __FUNCTION__);
+		warn("Could not copy fls_data\n");
 		return -1;
 	}
 	_fls[fsd.index] = fsd.value;

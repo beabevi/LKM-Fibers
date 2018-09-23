@@ -27,7 +27,7 @@ void initialize_proc(void)
 {
 	fibers_dir = proc_mkdir(".fibers", NULL);
 	if (fibers_dir == NULL) {
-		pr_warn("Failed proc\n");
+		warn("Failed proc\n");
 		proc_remove(fibers_dir);
 	}
 	hijack_symbols();
@@ -41,8 +41,7 @@ int init_module(void)
 	// Device registration for userspace-driver communication
 	int minor = misc_register(&fibers_dev);
 	if (minor < 0) {
-		pr_alert("[fibers: %s] Failed to register /dev/%s\n",
-			 __FUNCTION__, DEVICE_NAME);
+		alert("Failed to register /dev/%s\n", DEVICE_NAME);
 		return minor;
 	}
 
@@ -86,14 +85,13 @@ static int device_open(struct inode *inode, struct file *file)
 
 	ret = snprintf(buf, buf_len, "%d", current->tgid);
 	if (!ret) {
-		pr_warn("[fibers: %s] Could not read tgid\n", __FUNCTION__);
+		warn("Could not read tgid\n");
 		kfree(fibdata);
 		return -1;
 	}
 	fibdata->base = proc_mkdir(buf, fibers_dir);
 	if (!fibdata->base) {
-		pr_warn("[fibers: %s] Could not create proc file\n",
-			__FUNCTION__);
+		warn("Could not create proc file\n");
 		kfree(fibdata);
 		return -1;
 	}
