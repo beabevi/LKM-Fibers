@@ -1,4 +1,4 @@
-#include "../include/module/fibers.h"
+#include <fibers.h>
 
 #include <linux/string.h>
 #include <linux/fs.h>

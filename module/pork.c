@@ -1,4 +1,4 @@
-#include "../include/module/pork.h"
+#include <pork.h>
 
 typedef struct dentry *(*proc_pident_instantiate_t) (struct dentry *,
 						     struct task_struct *,

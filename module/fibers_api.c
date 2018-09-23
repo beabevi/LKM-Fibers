@@ -1,4 +1,4 @@
-#include "../include/module/fibers_api.h"
+#include <fibers_api.h>
 
 static long long _fls[MAX_FLS];
 static long fls_idx = 0;

@@ -7,7 +7,7 @@
 #include <linux/uaccess.h>
 #include <asm/fpu/internal.h>
 
-#include "common.h"
+#include <common.h>
 
 long to_fiber(struct fibers_data *fibdata);
 long create_fiber(struct fibers_data *fibdata,

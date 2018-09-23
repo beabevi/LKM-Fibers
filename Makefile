@@ -1,3 +1,5 @@
+EXTRA_CFLAGS := -I$(src)/include/module
+
 obj-m += fibers.o
 fibers-objs := module/fibers.o module/fibers_api.o module/pork.o
 
@@ -8,7 +10,7 @@ all:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	make -C examples/2018-fibers clean
+	rm examples/2018-fibers/test
 	sudo rmmod fibers
 	sudo dmesg -C
 
