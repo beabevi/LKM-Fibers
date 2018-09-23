@@ -75,39 +75,47 @@ static int proc_fibers_link(struct dentry *dentry, struct path *path)
 static int wrap_proc_tgid_base_readdir(struct file *file,
 				       struct dir_context *ctx)
 {
-	int ret = orig_proc_tgid_base_readdir(file, ctx);
+	int orig_ret;
+	int ret;
 	char buf[64];
 	struct task_struct *task;
 	pid_t pid;
 	struct path path;
 
-	if (ret) {
-		return ret;
+	// readdir is called infinitely often until ctx->pos is unchanged
+	// Here we ensure that we don't instantiate fibers again
+	if (ctx->pos > 0)
+		return 0;
+
+	if ((orig_ret  = orig_proc_tgid_base_readdir(file, ctx))) {
+		return orig_ret;
 	}
 
 	snprintf(buf, 64, "/proc/.fibers/%s", file->f_path.dentry->d_iname);
 	ret = kern_path(buf, LOOKUP_FOLLOW, &path);
 	if (ret) {
-		return 0;
+		return orig_ret;
 	}
 
 	ret = kstrtouint(file->f_path.dentry->d_iname, 10, &pid);
 	if (ret) {
 		pr_warn("[fibers: %s] Couldn't convert string to pid\n",
 			__FUNCTION__);
-		return 0;
+		return orig_ret;
 	}
+
 	task = get_pid_task(find_vpid(pid), PIDTYPE_PID);
 
 	if (!task) {
 		pr_warn("NO TASK FOUUUUND\n");
-		return 0;
+		return orig_ret;
 	}
 
-	proc_fill_cache(file, ctx, fibers_link.name, fibers_link.len,
-			proc_pident_instantiate, task, &fibers_link);
+	if (proc_fill_cache(file, ctx, fibers_link.name, fibers_link.len,
+			proc_pident_instantiate, task, &fibers_link)) {
+		ctx->pos++;
+	}
 	put_task_struct(task);
-	ctx->pos++;
 	return 0;
 }
 
