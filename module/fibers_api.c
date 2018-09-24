@@ -3,12 +3,12 @@
 static long long _fls[MAX_FLS];
 static long fls_idx = 0;
 
-char *fib_format = "state: %lu\n"\
-    "entry point: %lx\n"\
-    "creator pid: %d\n"\
-    "# activations: %lu\n"\
-	"# failed activations: %ld\n"\
-	"time:\n";
+#define fib_format "state: %lu\n"\
+                   "entry point: %lx\n"\
+                   "creator pid: %d\n"\
+                   "# activations: %lu\n"\
+                   "# failed activations: %ld\n"\
+                   "time:\n"
 
 ssize_t fiber_read_info(struct file *filp, char *buffer, size_t buff_len,
 			loff_t * off)
