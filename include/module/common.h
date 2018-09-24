@@ -20,7 +20,10 @@ struct fiber_struct {
 	pid_t pid;
 	unsigned long activations;
 	atomic64_t failed_activations;
-	// TODO: add activation time field
+	u64 laststart_utime;
+	u64 laststart_stime;
+	u64 utime;
+	u64 stime;
 	struct pt_regs exec_context;
 	struct fpu fpuregs;
 };

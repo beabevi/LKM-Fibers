@@ -6,6 +6,7 @@
 #include <linux/rcupdate.h>
 #include <linux/uaccess.h>
 #include <asm/fpu/internal.h>
+#include <linux/sched/cputime.h>
 
 #include <common.h>
 

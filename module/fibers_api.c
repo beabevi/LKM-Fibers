@@ -8,7 +8,8 @@ static long fls_idx = 0;
                    "creator pid: %d\n"\
                    "# activations: %lu\n"\
                    "# failed activations: %ld\n"\
-                   "time:\n"
+                   "utime (ns): %llu\n"\
+                   "stime (ns): %llu\n"
 
 ssize_t fiber_read_info(struct file *filp, char *buffer, size_t buff_len,
 			loff_t * off)
@@ -23,7 +24,8 @@ ssize_t fiber_read_info(struct file *filp, char *buffer, size_t buff_len,
 	}
 
 	snprintf(out, 256, fib_format, f->state, f->entry_point, f->pid,
-		 f->activations, f->failed_activations.counter);
+		 f->activations, f->failed_activations.counter, f->utime,
+		 f->stime);
 	n_bytes = strlen(out);
 	ret = copy_to_user(buffer, out, n_bytes);
 	if (ret) {
@@ -45,8 +47,6 @@ static inline void fiber_setup_stats(struct fiber_struct *f,
 	f->entry_point = entry;
 	f->pid = current->pid;
 	f->activations = (f->state == FIB_RUNNING) ? 1 : 0;
-	f->failed_activations.counter = 0;
-	// TODO: initialize execution time
 }
 
 static inline void fiber_init_stopped(struct fiber_struct *f,
@@ -57,7 +57,6 @@ static inline void fiber_init_stopped(struct fiber_struct *f,
 	f->exec_context.sp = (unsigned long)data->stack;
 	f->exec_context.ip = (unsigned long)data->entry_point;
 	f->exec_context.di = (unsigned long)data->param;
-	f->exec_context.flags = 0L;
 	fiber_setup_stats(f, f->exec_context.ip);
 }
 
@@ -93,7 +92,7 @@ long to_fiber(struct fibers_data *fibdata)
 {
 	fid_t id;
 	struct fiber_struct *f =
-	    kmalloc(sizeof(struct fiber_struct), GFP_KERNEL);
+	    kzalloc(sizeof(struct fiber_struct), GFP_KERNEL);
 
 	if (unlikely(!f)) {
 		warn("Failed fiber_struct allocation (%d)\n", current->pid);
@@ -154,6 +153,7 @@ long switch_fiber(struct fibers_data *fibdata, fid_t fid)
 	struct fiber_struct *next, *prev;
 	bool old;
 	struct pt_regs *regs;
+	u64 utime, stime;
 
 	prev = current_fiber;
 
@@ -178,7 +178,12 @@ long switch_fiber(struct fibers_data *fibdata, fid_t fid)
 	}
 
 	next->activations++;
-	// TODO: update exec time
+
+	task_cputime_adjusted(current, &utime, &stime);
+	prev->utime += utime - prev->laststart_utime;
+	prev->stime += stime - prev->laststart_stime;
+	next->laststart_utime = utime;
+	next->laststart_stime = stime;
 
 	regs = current_pt_regs();
 	prev->exec_context = *regs;
