@@ -98,6 +98,8 @@ static int device_open(struct inode *inode, struct file *file)
 	// Initialization of fibers pool idr
 	idr_init(&fibdata->fibers_pool);
 
+	bitmap_clear(fibdata->bitmap, 0, FLS_BSIZE);
+
 	file->private_data = fibdata;
 
 	return SUCCESS;
@@ -140,13 +142,16 @@ static long device_ioctl(struct file *filp,
 		return switch_fiber((struct fibers_data *)filp->private_data,
 				    ioctl_param);
 	case IOCTL_FLS_ALLOC:
-		return fls_alloc();
+		return fls_alloc((struct fibers_data *)filp->private_data);
 	case IOCTL_FLS_FREE:
-		return fls_free((long)ioctl_param);
+		return fls_free((struct fibers_data *)filp->private_data,
+				(long)ioctl_param);
 	case IOCTL_FLS_SET:
-		return fls_set((struct fls_data *)ioctl_param);
+		return fls_set((struct fibers_data *)filp->private_data,
+			       (struct fls_data *)ioctl_param);
 	case IOCTL_FLS_GET:
-		return fls_get((struct fls_data *)ioctl_param);
+		return fls_get((struct fibers_data *)filp->private_data,
+			       (struct fls_data *)ioctl_param);
 	}
 	return -1;
 }

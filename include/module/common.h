@@ -14,6 +14,9 @@
 #include <klog.h>
 #include "../const.h"
 
+#define MAX_FLS 4096
+#define FLS_BSIZE (MAX_FLS/sizeof(long long))
+
 struct fiber_struct {
 	unsigned long state;	// RUNNING-STOPPED
 	unsigned long entry_point;
@@ -31,6 +34,8 @@ struct fiber_struct {
 struct fibers_data {
 	struct idr fibers_pool;
 	struct proc_dir_entry *base;
+	long long fls[MAX_FLS];
+	unsigned long bitmap[FLS_BSIZE];
 };
 
 #endif

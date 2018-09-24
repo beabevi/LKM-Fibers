@@ -1,8 +1,5 @@
 #include <fibers_api.h>
 
-static long long _fls[MAX_FLS];
-static long fls_idx = 0;
-
 #define fib_format "state: %lu\n"\
                    "entry point: %lx\n"\
                    "creator pid: %d\n"\
@@ -11,7 +8,7 @@ static long fls_idx = 0;
                    "utime (ns): %llu\n"\
                    "stime (ns): %llu\n"
 
-ssize_t fiber_read_info(struct file *filp, char *buffer, size_t buff_len,
+ssize_t fiber_read_info(struct file * filp, char *buffer, size_t buff_len,
 			loff_t * off)
 {
 	char out[256];
@@ -57,6 +54,7 @@ static inline void fiber_init_stopped(struct fiber_struct *f,
 	f->exec_context.sp = (unsigned long)data->stack;
 	f->exec_context.ip = (unsigned long)data->entry_point;
 	f->exec_context.di = (unsigned long)data->param;
+	//f->exec_context.flags = 0UL;
 	fiber_setup_stats(f, f->exec_context.ip);
 }
 
@@ -202,16 +200,19 @@ long switch_fiber(struct fibers_data *fibdata, fid_t fid)
 	return 0;
 }
 
-long fls_alloc(void)
+long fls_alloc(struct fibers_data *fibdata)
 {
-	long ret = __sync_fetch_and_add(&fls_idx, 1);
-	if (ret >= MAX_FLS)
-		return -1;
-	return ret;
+	unsigned long idx;
+	do {
+		idx = find_first_zero_bit(fibdata->bitmap, FLS_BSIZE);
+		if (idx == FLS_BSIZE) {
+			return -1;
+		}
+	} while (test_and_set_bit(idx, fibdata->bitmap));
+	return idx;
 }
 
-// Get a FLS value
-long fls_get(struct fls_data __user * data)
+long fls_get(struct fibers_data *fibdata, struct fls_data __user * data)
 {
 	struct fls_data fsd;
 	unsigned long ret =
@@ -220,7 +221,10 @@ long fls_get(struct fls_data __user * data)
 		warn("Could not copy fls_data\n");
 		return -1;
 	}
-	fsd.value = _fls[fsd.index];
+	if (!test_bit(fsd.index, fibdata->bitmap)) {
+		return -1;
+	}
+	fsd.value = fibdata->fls[fsd.index];
 
 	ret = copy_to_user(&data->value, &fsd.value, sizeof(long long));
 
@@ -231,15 +235,13 @@ long fls_get(struct fls_data __user * data)
 	return 0;
 }
 
-// Dummy: we don't actually free FLS here...
-bool fls_free(long idx)
+bool fls_free(struct fibers_data * fibdata, long idx)
 {
-	(void)idx;
+	clear_bit(idx, fibdata->bitmap);
 	return true;
 }
 
-// Store a value in FLS storage
-long fls_set(struct fls_data __user * data)
+long fls_set(struct fibers_data *fibdata, struct fls_data __user * data)
 {
 	struct fls_data fsd;
 	unsigned long ret = copy_from_user(&fsd, data, sizeof(struct fls_data));
@@ -247,7 +249,10 @@ long fls_set(struct fls_data __user * data)
 		warn("Could not copy fls_data\n");
 		return -1;
 	}
-	_fls[fsd.index] = fsd.value;
+	if (!test_bit(fsd.index, fibdata->bitmap)) {
+		return -1;
+	}
+	fibdata->fls[fsd.index] = fsd.value;
 
 	return 0;
 }

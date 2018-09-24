@@ -14,12 +14,10 @@ long to_fiber(struct fibers_data *fibdata);
 long create_fiber(struct fibers_data *fibdata,
 		  struct create_data __user * data);
 long switch_fiber(struct fibers_data *fibdata, fid_t fid);
-long fls_alloc(void);
-bool fls_free(long index);
-long fls_set(struct fls_data __user * data);
-long fls_get(struct fls_data __user * data);
-
-#define MAX_FLS 4096
+long fls_alloc(struct fibers_data *fibdata);
+bool fls_free(struct fibers_data *fibdata, long index);
+long fls_set(struct fibers_data *fibdata, struct fls_data __user * data);
+long fls_get(struct fibers_data *fibdata, struct fls_data __user * data);
 
 #define current_fiber (*((struct fiber_struct **) (((unsigned long)current->stack) + sizeof(struct thread_info))))
 #endif
