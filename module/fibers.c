@@ -159,4 +159,4 @@ static long device_ioctl(struct file *filp,
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR
     ("Beatrice Bevilacqua <beatricebevilacqua1995@gmail.com> and Anxhelo Xhebraj <angelogebrai@gmail.com>");
-MODULE_DESCRIPTION("");		// TODO: change module description
+MODULE_DESCRIPTION("Implements coroutines following Windows fibers api");

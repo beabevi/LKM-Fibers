@@ -36,3 +36,9 @@ pretty:
 
 pretty-clean:
 	find . -type f -name '*~' -delete
+
+report:
+	pandoc \
+	--filter pandoc-include-code report.txt -s \
+	--css pandoc.css --toc \
+	-o report.html

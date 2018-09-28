@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Beatrice Bevilacqua, Anxhelo Xhebraj" />
+  <title>Loadable Kernel Module based Fibers</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <style type="text/css">
+a.sourceLine { display: inline-block; line-height: 1.25; }
+a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
+a.sourceLine:empty { height: 1.2em; position: absolute; }
+.sourceCode { overflow: visible; }
+code.sourceCode { white-space: pre; position: relative; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+code.sourceCode { white-space: pre-wrap; }
+a.sourceLine { text-indent: -1em; padding-left: 1em; }
+}
+pre.numberSource a.sourceLine
+  { position: relative; }
+pre.numberSource a.sourceLine:empty
+  { position: absolute; }
+pre.numberSource a.sourceLine::before
+  { content: attr(data-line-number);
+    position: absolute; left: -5em; text-align: right; vertical-align: baseline;
+    border: none; pointer-events: all;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {  }
+@media screen {
+a.sourceLine::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="pandoc.css">
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<header>
+<h1 class="title">Loadable Kernel Module based Fibers</h1>
+<p class="author">Beatrice Bevilacqua, Anxhelo Xhebraj</p>
+<p class="date">September 2018</p>
+</header>
+<nav id="TOC">
+<ul>
+<li><a href="#introduction">Introduction</a></li>
+<li><a href="#interface">Interface</a></li>
+<li><a href="#module">Module</a><ul>
+<li><a href="#fiber-creation">Fiber creation</a></li>
+<li><a href="#fiber-switching">Fiber switching</a></li>
+<li><a href="#fiber-local-storage">Fiber Local Storage</a></li>
+</ul></li>
+<li><a href="#procfs-extension"><code>procfs</code> extension</a></li>
+<li><a href="#performance">Performance</a></li>
+<li><a href="#conclusions">Conclusions</a></li>
+</ul>
+</nav>
+<figure>
+<img src="images/diagram.png" alt="Project overview" style="width:100.0%" /><figcaption>Project overview</figcaption>
+</figure>
+<h2 id="introduction">Introduction</h2>
+<p>Coroutines are a programming paradigm that offers time-sharing non-preemptive multitasking which can be used to implement many patterns such as the Actor model, State machines and Communicating Sequential Processes. This concept has influenced many programming languages such as Go and Clojure especially for handling asynchronous I/O operations.</p>
+<p>In this document we present a Loadable Kernel Module (LKM) implementation taking as reference the Fibers implementation offered by Windows NT and ReactOS. While user space implementations are generally preferred for their low over-head and easier debugging, a kernel space implementation permits to understand more deeply how kernel subsystems work.</p>
+<p>The project is composed of two main parts:</p>
+<ul>
+<li><p>a LKM that implements the facilities to perform the yielding of a fiber and managing their context with an additional component that extends <code>procfs</code> to provide information about fibers under <code>/proc/&lt;tgid&gt;</code></p></li>
+<li><p>a user space library to invoke the previously mentioned facilities</p></li>
+</ul>
+<p>The code has been tested from kernel 4.16 up <a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.</p>
+<h2 id="interface">Interface</h2>
+<p>The entry points to kernel space code are exported by the library which performs <code>ioctl()</code> calls to a special <em><a href="https://www.linuxjournal.com/article/2920">miscdevice</a></em> registered by the module at load time. Differently from “typical” character devices, miscdevices are more suited for implementing just an entry point to kernel facilities than reserving a full range of minor numbers representing actual devices.</p>
+<p><strong><code>module/fibers.c</code></strong></p>
+<div class="sourceCode" id="cb1" data-caption="module/fibers.c" data-startFrom="10"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb1-10" href="#cb1-10" data-line-number="10"><span class="dt">static</span> <span class="kw">struct</span> file_operations fibers_fops = {</a>
+<a class="sourceLine" id="cb1-11" href="#cb1-11" data-line-number="11">	.owner = THIS_MODULE,</a>
+<a class="sourceLine" id="cb1-12" href="#cb1-12" data-line-number="12">	.open = device_open,</a>
+<a class="sourceLine" id="cb1-13" href="#cb1-13" data-line-number="13">	.release = device_release,</a>
+<a class="sourceLine" id="cb1-14" href="#cb1-14" data-line-number="14">	.unlocked_ioctl = device_ioctl</a>
+<a class="sourceLine" id="cb1-15" href="#cb1-15" data-line-number="15">};</a>
+<a class="sourceLine" id="cb1-16" href="#cb1-16" data-line-number="16"></a>
+<a class="sourceLine" id="cb1-17" href="#cb1-17" data-line-number="17"><span class="dt">static</span> <span class="kw">struct</span> miscdevice fibers_dev = {</a>
+<a class="sourceLine" id="cb1-18" href="#cb1-18" data-line-number="18">	.minor = MISC_DYNAMIC_MINOR,</a>
+<a class="sourceLine" id="cb1-19" href="#cb1-19" data-line-number="19">	.name = DEVICE_NAME,</a>
+<a class="sourceLine" id="cb1-20" href="#cb1-20" data-line-number="20">	.fops = &amp;fibers_fops,</a>
+<a class="sourceLine" id="cb1-21" href="#cb1-21" data-line-number="21">	.mode = S_IALLUGO</a>
+<a class="sourceLine" id="cb1-22" href="#cb1-22" data-line-number="22">};</a></code></pre></div>
+<div class="sourceCode" id="cb2" data-caption="module/fibers.c" data-startFrom="39"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb2-39" href="#cb2-39" data-line-number="39"><span class="dt">int</span> init_module(<span class="dt">void</span>)</a>
+<a class="sourceLine" id="cb2-40" href="#cb2-40" data-line-number="40">{</a>
+<a class="sourceLine" id="cb2-41" href="#cb2-41" data-line-number="41">	<span class="co">// Device registration for userspace-driver communication</span></a>
+<a class="sourceLine" id="cb2-42" href="#cb2-42" data-line-number="42">	<span class="dt">int</span> minor = misc_register(&amp;fibers_dev);</a>
+<a class="sourceLine" id="cb2-43" href="#cb2-43" data-line-number="43">	<span class="cf">if</span> (minor &lt; <span class="dv">0</span>) {</a>
+<a class="sourceLine" id="cb2-44" href="#cb2-44" data-line-number="44">		alert(<span class="st">&quot;Failed to register /dev/%s</span><span class="sc">\n</span><span class="st">&quot;</span>, DEVICE_NAME);</a>
+<a class="sourceLine" id="cb2-45" href="#cb2-45" data-line-number="45">		<span class="cf">return</span> minor;</a>
+<a class="sourceLine" id="cb2-46" href="#cb2-46" data-line-number="46">	}</a>
+<a class="sourceLine" id="cb2-47" href="#cb2-47" data-line-number="47"></a>
+<a class="sourceLine" id="cb2-48" href="#cb2-48" data-line-number="48">	initialize_proc();</a>
+<a class="sourceLine" id="cb2-49" href="#cb2-49" data-line-number="49"></a>
+<a class="sourceLine" id="cb2-50" href="#cb2-50" data-line-number="50">	<span class="cf">return</span> SUCCESS;</a>
+<a class="sourceLine" id="cb2-51" href="#cb2-51" data-line-number="51">}</a></code></pre></div>
+<p>After the load of the module a new file called <code>fibers</code> is exposed in <code>/dev</code> and the <code>.fibers</code> folder appears under <code>/proc</code>. The file operations implemented for such device are <code>open</code>, <code>release</code> and <code>ioctl</code> which are called upon the respective system calls invokations on the file through the functions offered by the library.</p>
+<p><strong><code>lib/fibers.c</code></strong></p>
+<div class="sourceCode" id="cb3" data-caption="lib/fibers.c" data-startFrom="4"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb3-4" href="#cb3-4" data-line-number="4"><span class="dt">static</span> <span class="dt">int</span> __fibers_file = <span class="dv">-1</span>;</a>
+<a class="sourceLine" id="cb3-5" href="#cb3-5" data-line-number="5"></a>
+<a class="sourceLine" id="cb3-6" href="#cb3-6" data-line-number="6"><span class="dt">static</span> <span class="dt">void</span> __attribute__ ((constructor)) __file_opener();</a></code></pre></div>
+<div class="sourceCode" id="cb4" data-caption="lib/fibers.c" data-startFrom="20"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb4-20" href="#cb4-20" data-line-number="20"><span class="dt">static</span> <span class="dt">void</span> __fork_handler()</a>
+<a class="sourceLine" id="cb4-21" href="#cb4-21" data-line-number="21">{</a>
+<a class="sourceLine" id="cb4-22" href="#cb4-22" data-line-number="22">	<span class="dt">int</span> err = close(__fibers_file);</a>
+<a class="sourceLine" id="cb4-23" href="#cb4-23" data-line-number="23">	__fibers_file = open(<span class="st">&quot;/dev/&quot;</span> DEVICE_NAME, <span class="dv">0</span>);</a>
+<a class="sourceLine" id="cb4-24" href="#cb4-24" data-line-number="24">	<span class="cf">if</span> (__fibers_file &lt; <span class="dv">0</span>) {</a>
+<a class="sourceLine" id="cb4-25" href="#cb4-25" data-line-number="25">		log_fatal(<span class="st">&quot;Fiber file is not open, exiting...&quot;</span>);</a>
+<a class="sourceLine" id="cb4-26" href="#cb4-26" data-line-number="26">	}</a>
+<a class="sourceLine" id="cb4-27" href="#cb4-27" data-line-number="27">}</a>
+<a class="sourceLine" id="cb4-28" href="#cb4-28" data-line-number="28"></a>
+<a class="sourceLine" id="cb4-29" href="#cb4-29" data-line-number="29"><span class="dt">static</span> <span class="dt">void</span> __file_opener()</a>
+<a class="sourceLine" id="cb4-30" href="#cb4-30" data-line-number="30">{</a>
+<a class="sourceLine" id="cb4-31" href="#cb4-31" data-line-number="31">	__fibers_file = open(<span class="st">&quot;/dev/&quot;</span> DEVICE_NAME, <span class="dv">0</span>);</a>
+<a class="sourceLine" id="cb4-32" href="#cb4-32" data-line-number="32">	<span class="cf">if</span> (__fibers_file &lt; <span class="dv">0</span>) {</a>
+<a class="sourceLine" id="cb4-33" href="#cb4-33" data-line-number="33">		log_fatal(<span class="st">&quot;Fiber file is not open, exiting...&quot;</span>);</a>
+<a class="sourceLine" id="cb4-34" href="#cb4-34" data-line-number="34">	}</a>
+<a class="sourceLine" id="cb4-35" href="#cb4-35" data-line-number="35">	<span class="dt">int</span> err = pthread_atfork(NULL, NULL, __fork_handler);</a>
+<a class="sourceLine" id="cb4-36" href="#cb4-36" data-line-number="36">	<span class="cf">if</span> (err) {</a>
+<a class="sourceLine" id="cb4-37" href="#cb4-37" data-line-number="37">		log_fatal(<span class="st">&quot;Couldn&#39;t register atfork handler&quot;</span>);</a>
+<a class="sourceLine" id="cb4-38" href="#cb4-38" data-line-number="38">	}</a>
+<a class="sourceLine" id="cb4-39" href="#cb4-39" data-line-number="39">}</a></code></pre></div>
+<p>The library provided defines a constructor function which opens the file thus instantiating one <em>file descriptor</em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> designated to communicate with the module. Since a file descriptor represents a pool of fibers all the threads belonging to the process are allowed to interact and execute fibers of such process. Moreover, the code can easily be extended to support multiple opens of the <code>fibers</code> file to create separate pools of fibers and thus implement different scheduling strategies such as assigning different pools to different threads.</p>
+<p>In order to avoid unintended sharing of fibers pool from parent process to child after a <code>fork()</code> caused by file descriptor inheritance, an <em>atfork</em> function is registered to be run on the child after a fork, which closes the parent descriptor and reopens the file.</p>
+<p>Finally, in the library there are respectively implemented, based on <code>ioctl</code> calls on the <code>__fibers_file</code> file descriptor, the functions to convert a thread to fiber, create a new fiber, yielding from a fiber to another one and allocate and manage fixed size memory (Fiber Local Storage).</p>
+<p><strong><code>include/lib/fibers.h</code></strong></p>
+<div class="sourceCode" id="cb5" data-caption="include/lib/fibers.h" data-startFrom="15"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb5-15" href="#cb5-15" data-line-number="15"><span class="dt">void</span> *to_fiber(<span class="dt">void</span>);</a>
+<a class="sourceLine" id="cb5-16" href="#cb5-16" data-line-number="16"><span class="dt">void</span> *create_fiber(<span class="dt">size_t</span> stack_size, <span class="dt">void</span> (*entry_point) (<span class="dt">void</span> *),</a>
+<a class="sourceLine" id="cb5-17" href="#cb5-17" data-line-number="17">		   <span class="dt">void</span> *param);</a>
+<a class="sourceLine" id="cb5-18" href="#cb5-18" data-line-number="18"><span class="dt">void</span> switch_fiber(<span class="dt">void</span> *fid);</a>
+<a class="sourceLine" id="cb5-19" href="#cb5-19" data-line-number="19"><span class="dt">long</span> fls_alloc(<span class="dt">void</span>);</a>
+<a class="sourceLine" id="cb5-20" href="#cb5-20" data-line-number="20"><span class="dt">bool</span> fls_free(<span class="dt">long</span> index);</a>
+<a class="sourceLine" id="cb5-21" href="#cb5-21" data-line-number="21"><span class="dt">void</span> fls_set(<span class="dt">long</span> index, <span class="dt">long</span> <span class="dt">long</span> value);</a>
+<a class="sourceLine" id="cb5-22" href="#cb5-22" data-line-number="22"><span class="dt">long</span> <span class="dt">long</span> fls_get(<span class="dt">long</span> index);</a></code></pre></div>
+<p>All these functions prepare data structures to be passed to their relative kernel space implementations and invoke the following wrapper of the <code>ioctl</code> system call. The code saves the callee-save register in case of switching from one fiber to another since they are not saved by the Linux system call dispatcher. This is needed in order to correctly save and restore the execution context of a fiber otherwise it would not be possible to obtain the state of such registers when the system call is performed in kernel space.</p>
+<p><strong><code>lib/fibers.c</code></strong></p>
+<div class="sourceCode" id="cb6" data-caption="lib/fibers.c" data-startFrom="55"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb6-55" href="#cb6-55" data-line-number="55"><span class="dt">long</span> fib_ioctl(<span class="dt">unsigned</span> <span class="dt">int</span> fd, <span class="dt">unsigned</span> <span class="dt">int</span> cmd, <span class="dt">unsigned</span> <span class="dt">long</span> arg)</a>
+<a class="sourceLine" id="cb6-56" href="#cb6-56" data-line-number="56">{</a>
+<a class="sourceLine" id="cb6-57" href="#cb6-57" data-line-number="57">	<span class="dt">long</span> res = <span class="dv">0</span>;</a>
+<a class="sourceLine" id="cb6-58" href="#cb6-58" data-line-number="58">	<span class="cf">if</span> (cmd == IOCTL_SWITCH_FIB) {</a>
+<a class="sourceLine" id="cb6-59" href="#cb6-59" data-line-number="59">		asm <span class="dt">volatile</span> (<span class="st">&quot;push %%rbx </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-60" href="#cb6-60" data-line-number="60">			      <span class="st">&quot;push %%rbp </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-61" href="#cb6-61" data-line-number="61">			      <span class="st">&quot;push %%r12 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-62" href="#cb6-62" data-line-number="62">			      <span class="st">&quot;push %%r13 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-63" href="#cb6-63" data-line-number="63">			      <span class="st">&quot;push %%r14 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-64" href="#cb6-64" data-line-number="64">			      <span class="st">&quot;push %%r15 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-65" href="#cb6-65" data-line-number="65">			      <span class="st">&quot;syscall </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-66" href="#cb6-66" data-line-number="66">			      <span class="st">&quot;pop %%r15 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-67" href="#cb6-67" data-line-number="67">			      <span class="st">&quot;pop %%r14 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-68" href="#cb6-68" data-line-number="68">			      <span class="st">&quot;pop %%r13 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-69" href="#cb6-69" data-line-number="69">			      <span class="st">&quot;pop %%r12 </span><span class="sc">\n\t</span><span class="st">&quot;</span></a>
+<a class="sourceLine" id="cb6-70" href="#cb6-70" data-line-number="70">			      <span class="st">&quot;pop %%rbp </span><span class="sc">\n\t</span><span class="st">&quot;</span> <span class="st">&quot;pop %%rbx </span><span class="sc">\n\t</span><span class="st">&quot;</span>:<span class="st">&quot;=a&quot;</span> (res)</a>
+<a class="sourceLine" id="cb6-71" href="#cb6-71" data-line-number="71">			      :<span class="st">&quot;0&quot;</span>(SYS_ioctl), <span class="st">&quot;D&quot;</span>(fd), <span class="st">&quot;S&quot;</span>(cmd), <span class="st">&quot;d&quot;</span>(arg):</a>
+<a class="sourceLine" id="cb6-72" href="#cb6-72" data-line-number="72">			      <span class="st">&quot;memory&quot;</span>);</a>
+<a class="sourceLine" id="cb6-73" href="#cb6-73" data-line-number="73">	} <span class="cf">else</span> {</a>
+<a class="sourceLine" id="cb6-74" href="#cb6-74" data-line-number="74">		asm <span class="dt">volatile</span> (<span class="st">&quot;syscall </span><span class="sc">\n\t</span><span class="st">&quot;</span>:<span class="st">&quot;=a&quot;</span> (res)</a>
+<a class="sourceLine" id="cb6-75" href="#cb6-75" data-line-number="75">			      :<span class="st">&quot;0&quot;</span>(SYS_ioctl), <span class="st">&quot;D&quot;</span>(fd), <span class="st">&quot;S&quot;</span>(cmd), <span class="st">&quot;d&quot;</span>(arg):</a>
+<a class="sourceLine" id="cb6-76" href="#cb6-76" data-line-number="76">			      <span class="st">&quot;memory&quot;</span>);</a>
+<a class="sourceLine" id="cb6-77" href="#cb6-77" data-line-number="77"></a>
+<a class="sourceLine" id="cb6-78" href="#cb6-78" data-line-number="78">	}</a>
+<a class="sourceLine" id="cb6-79" href="#cb6-79" data-line-number="79"></a>
+<a class="sourceLine" id="cb6-80" href="#cb6-80" data-line-number="80">	<span class="cf">return</span> res;</a>
+<a class="sourceLine" id="cb6-81" href="#cb6-81" data-line-number="81">}</a></code></pre></div>
+<h2 id="module">Module</h2>
+<p><strong><code>include/module/common.h</code></strong></p>
+<div class="sourceCode" id="cb7" data-caption="include/module/common.h" data-startFrom="34"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb7-34" href="#cb7-34" data-line-number="34"><span class="kw">struct</span> fibers_data {</a>
+<a class="sourceLine" id="cb7-35" href="#cb7-35" data-line-number="35">	<span class="kw">struct</span> idr fibers_pool;</a>
+<a class="sourceLine" id="cb7-36" href="#cb7-36" data-line-number="36">	<span class="kw">struct</span> proc_dir_entry *base;</a>
+<a class="sourceLine" id="cb7-37" href="#cb7-37" data-line-number="37">	<span class="dt">unsigned</span> <span class="dt">long</span> fls[MAX_FLS];</a>
+<a class="sourceLine" id="cb7-38" href="#cb7-38" data-line-number="38">	<span class="dt">unsigned</span> <span class="dt">long</span> bitmap[FLS_BSIZE];</a>
+<a class="sourceLine" id="cb7-39" href="#cb7-39" data-line-number="39">};</a></code></pre></div>
+<p>When the constructor defined by the library is executed, the <code>open</code> file operation is performed which initializes a <code>struct fibers_data</code> that keeps the per process information such as:</p>
+<ul>
+<li><p><code>fibers_pool</code>: an <em><a href="https://www.kernel.org/doc/html/v4.17/core-api/idr.html">idr</a></em> data structure that maintains the fibers of the process. Internally it uses a <a href="https://lwn.net/Articles/175432/">radix tree</a>, making efficient the assignment of an id to fibers and later retrieving them by the same id</p></li>
+<li><p><code>base</code>: the directory entry associated to <code>/proc/.fibers/&lt;tgid&gt;</code>, a directory keeping one file for each fiber created by the process. As explained <a href="#procfs-extension">later</a> a symlink (<code>fibers</code>) to such directory is added under <code>/proc/&lt;tgid&gt;</code></p></li>
+<li><p><code>fls</code>: an array keeping the allocation units provided to the fibers</p></li>
+<li><p><code>bitmap</code>: bitmap to manage the allocation and deallocation of the aforementioned units</p></li>
+</ul>
+<p>The struct is then stored in the <code>private_data</code> field of the file descriptor which is a free field that can be used by device drivers for such purposes to later retrieve it on <code>ioctl</code>.</p>
+<p>These data structures are finally freed on the <code>release</code> operation of the file which is called when the <code>struct file</code> associated to the file is going to be freed by the kernel, i.e. on close of the file or exit/fault of the process.</p>
+<p>The fibers’ pool maintains structures of the following type.</p>
+<p><strong><code>include/module/common.h</code></strong></p>
+<div class="sourceCode" id="cb8" data-caption="include/module/common.h" data-startFrom="20"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb8-20" href="#cb8-20" data-line-number="20"><span class="kw">struct</span> fiber_struct {</a>
+<a class="sourceLine" id="cb8-21" href="#cb8-21" data-line-number="21">	<span class="dt">unsigned</span> <span class="dt">long</span> state;	<span class="co">// RUNNING-STOPPED</span></a>
+<a class="sourceLine" id="cb8-22" href="#cb8-22" data-line-number="22">	<span class="dt">unsigned</span> <span class="dt">long</span> entry_point;</a>
+<a class="sourceLine" id="cb8-23" href="#cb8-23" data-line-number="23">	pid_t pid;</a>
+<a class="sourceLine" id="cb8-24" href="#cb8-24" data-line-number="24">	<span class="dt">unsigned</span> <span class="dt">long</span> activations;</a>
+<a class="sourceLine" id="cb8-25" href="#cb8-25" data-line-number="25">	atomic64_t failed_activations;</a>
+<a class="sourceLine" id="cb8-26" href="#cb8-26" data-line-number="26">	u64 laststart_utime;</a>
+<a class="sourceLine" id="cb8-27" href="#cb8-27" data-line-number="27">	u64 laststart_stime;</a>
+<a class="sourceLine" id="cb8-28" href="#cb8-28" data-line-number="28">	u64 utime;</a>
+<a class="sourceLine" id="cb8-29" href="#cb8-29" data-line-number="29">	u64 stime;</a>
+<a class="sourceLine" id="cb8-30" href="#cb8-30" data-line-number="30">	<span class="kw">struct</span> pt_regs exec_context;</a>
+<a class="sourceLine" id="cb8-31" href="#cb8-31" data-line-number="31">	<span class="kw">struct</span> fpu fpuregs;</a>
+<a class="sourceLine" id="cb8-32" href="#cb8-32" data-line-number="32">};</a></code></pre></div>
+<ul>
+<li><p>The <code>entry_point</code> is the address of the first instruction that a fiber will execute on first schedule</p></li>
+<li><p>The <code>exec_context</code> and <code>fpuregs</code> fields are used to keep all the registers content to properly maintain the state of a fiber for context switching</p></li>
+<li><p>The <code>state</code> field is used to avoid a fiber being run by two threads concurrently</p></li>
+<li><p>The additional fields are used for statistics about the fibers which the user can retrieve from the file <code>/proc/&lt;tgid&gt;/fibers/&lt;fiber_id&gt;</code></p></li>
+</ul>
+<p>When the <code>ioctl</code> file operation is invoked, it calls the proper kernel space function to handle the user space request.</p>
+<h3 id="fiber-creation">Fiber creation</h3>
+<p>A fiber data structure is created in case of a <code>create_fiber</code> or a <code>to_fiber</code> call. The latter is only used to let the module acknowledge that some thread can switch to other fibers and execution can resume at such thread.</p>
+<p>In brief the steps taken are:</p>
+<ul>
+<li><p>Allocation of a <code>struct fiber_struct</code>, initialization of its fields and insertion in <code>fibers_pool</code> protected through <em><a href="https://lwn.net/Articles/262464/">rcu</a></em>.</p>
+<p>In the case of <code>create_fiber</code> also the following actions are taken to set the right instruction pointer, stack pointer and parameter which are given by the userspace</p>
+<p><strong><code>module/fibers_api.c</code></strong></p>
+<div class="sourceCode" id="cb9" data-caption="module/fibers_api.c" data-startFrom="49"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb9-49" href="#cb9-49" data-line-number="49"><span class="dt">static</span> <span class="kw">inline</span> <span class="dt">void</span> fiber_init_stopped(<span class="kw">struct</span> fiber_struct *f,</a>
+<a class="sourceLine" id="cb9-50" href="#cb9-50" data-line-number="50">				      <span class="kw">struct</span> create_data *data)</a>
+<a class="sourceLine" id="cb9-51" href="#cb9-51" data-line-number="51">{</a>
+<a class="sourceLine" id="cb9-52" href="#cb9-52" data-line-number="52">	f-&gt;state = FIB_STOPPED;</a>
+<a class="sourceLine" id="cb9-53" href="#cb9-53" data-line-number="53">	f-&gt;exec_context = *current_pt_regs();</a>
+<a class="sourceLine" id="cb9-54" href="#cb9-54" data-line-number="54">	f-&gt;exec_context.sp = (<span class="dt">unsigned</span> <span class="dt">long</span>)data-&gt;stack;</a>
+<a class="sourceLine" id="cb9-55" href="#cb9-55" data-line-number="55">	f-&gt;exec_context.ip = (<span class="dt">unsigned</span> <span class="dt">long</span>)data-&gt;entry_point;</a>
+<a class="sourceLine" id="cb9-56" href="#cb9-56" data-line-number="56">	f-&gt;exec_context.di = (<span class="dt">unsigned</span> <span class="dt">long</span>)data-&gt;param;</a>
+<a class="sourceLine" id="cb9-57" href="#cb9-57" data-line-number="57">	fiber_setup_stats(f, f-&gt;exec_context.ip);</a>
+<a class="sourceLine" id="cb9-58" href="#cb9-58" data-line-number="58">}</a></code></pre></div>
+<p>The stack is allocated by the userspace library as follows</p>
+<p><strong><code>lib/fibers.c</code></strong></p>
+<div class="sourceCode" id="cb10" data-caption="lib/fibers.c" data-startFrom="92"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb10-92" href="#cb10-92" data-line-number="92"><span class="dt">void</span> *create_fiber(<span class="dt">size_t</span> stack_size, <span class="dt">void</span> (*entry_point) (<span class="dt">void</span> *), <span class="dt">void</span> *param)</a>
+<a class="sourceLine" id="cb10-93" href="#cb10-93" data-line-number="93">{</a>
+<a class="sourceLine" id="cb10-94" href="#cb10-94" data-line-number="94">	<span class="dt">void</span> *stack = mmap(NULL, stack_size, PROT_WRITE | PROT_READ,</a>
+<a class="sourceLine" id="cb10-95" href="#cb10-95" data-line-number="95">			   MAP_PRIVATE | MAP_ANON, <span class="dv">-1</span>, <span class="dv">0</span>);</a>
+<a class="sourceLine" id="cb10-96" href="#cb10-96" data-line-number="96"></a>
+<a class="sourceLine" id="cb10-97" href="#cb10-97" data-line-number="97">	<span class="cf">if</span> (stack == NULL) {</a>
+<a class="sourceLine" id="cb10-98" href="#cb10-98" data-line-number="98">		log_fatal(<span class="st">&quot;Couldn&#39;t allocate stack&quot;</span>);</a>
+<a class="sourceLine" id="cb10-99" href="#cb10-99" data-line-number="99">	}</a>
+<a class="sourceLine" id="cb10-100" href="#cb10-100" data-line-number="100"></a>
+<a class="sourceLine" id="cb10-101" href="#cb10-101" data-line-number="101">	<span class="kw">struct</span> create_data data = {</a>
+<a class="sourceLine" id="cb10-102" href="#cb10-102" data-line-number="102">		<span class="co">// x86-64 System-V ABI requires stack to be aligned at 16 byte before</span></a>
+<a class="sourceLine" id="cb10-103" href="#cb10-103" data-line-number="103">		<span class="co">// issuing a `call` and compilers assume this when compiling the</span></a>
+<a class="sourceLine" id="cb10-104" href="#cb10-104" data-line-number="104">		<span class="co">// entry points of fibers. Therefore in order to emulate a call we</span></a>
+<a class="sourceLine" id="cb10-105" href="#cb10-105" data-line-number="105">		<span class="co">// need to remove 8 bytes as if there was the return address to the</span></a>
+<a class="sourceLine" id="cb10-106" href="#cb10-106" data-line-number="106">		<span class="co">// caller.</span></a>
+<a class="sourceLine" id="cb10-107" href="#cb10-107" data-line-number="107">		.stack = (<span class="dt">void</span> *)(((<span class="dt">unsigned</span> <span class="dt">long</span>)stack) + stack_size - <span class="dv">8</span>),</a>
+<a class="sourceLine" id="cb10-108" href="#cb10-108" data-line-number="108">		.entry_point = entry_point,</a>
+<a class="sourceLine" id="cb10-109" href="#cb10-109" data-line-number="109">		.param = param</a>
+<a class="sourceLine" id="cb10-110" href="#cb10-110" data-line-number="110">	};</a></code></pre></div></li>
+<li><p>When adding the fiber in <code>fibers_pool</code> also a file under <code>/proc/.fibers/&lt;tgid&gt;</code> is created with name the id of the fiber. In the field <code>data</code> of <code>proc_dir_entry</code> corresponding to <code>/proc/.fibers/&lt;tgid&gt;/&lt;fiber_id&gt;</code> is stored a pointer to the associated <code>struct fiber_struct</code> to easily retrieve its statistics and then display them to the user.</p></li>
+<li><p>Since it is needed to know which fiber is running on a given thread, at the bottom of the kernel stack, immediatly above the <code>struct thread_info</code>, is stored the pointer to the <code>struct fiber_struct</code>. .</p>
+<p><strong><code>include/module/fibers_api.h</code></strong></p>
+<div class="sourceCode" id="cb11" data-caption="include/module/fibers_api.h" data-startFrom="22"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb11-22" href="#cb11-22" data-line-number="22"><span class="pp">#define current_fiber (                                   \</span></a>
+<a class="sourceLine" id="cb11-23" href="#cb11-23" data-line-number="23"><span class="pp">                       *((struct fiber_struct **)         \</span></a>
+<a class="sourceLine" id="cb11-24" href="#cb11-24" data-line-number="24"><span class="pp">                       (((unsigned long)current-&gt;stack) + \</span></a>
+<a class="sourceLine" id="cb11-25" href="#cb11-25" data-line-number="25"><span class="pp">                       sizeof(struct thread_info)))       \</span></a>
+<a class="sourceLine" id="cb11-26" href="#cb11-26" data-line-number="26"><span class="pp">                      )</span></a></code></pre></div>
+<p>The macro shown above acts as a per-thread kernel variable. Therefore <code>to_fiber</code> sets <code>current_fiber</code> as follows</p>
+<p><strong><code>module/fibers_api.c:to_fiber</code></strong></p>
+<div class="sourceCode" id="cb12" data-caption="module/fibers_api.c" data-startFrom="114"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb12-114" href="#cb12-114" data-line-number="114">	<span class="co">// Save current running fiber at the bottom of the kernel stack</span></a>
+<a class="sourceLine" id="cb12-115" href="#cb12-115" data-line-number="115">	<span class="co">// of the thread it is running on</span></a>
+<a class="sourceLine" id="cb12-116" href="#cb12-116" data-line-number="116">	current_fiber = f;</a></code></pre></div></li>
+</ul>
+<h3 id="fiber-switching">Fiber switching</h3>
+<p><strong><code>module/fibers_api.c</code></strong></p>
+<div class="sourceCode" id="cb13" data-caption="module/fibers_api.c" data-startFrom="154"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb13-154" href="#cb13-154" data-line-number="154"><span class="dt">long</span> switch_fiber(<span class="kw">struct</span> fibers_data *fibdata, fid_t fid)</a>
+<a class="sourceLine" id="cb13-155" href="#cb13-155" data-line-number="155">{</a>
+<a class="sourceLine" id="cb13-156" href="#cb13-156" data-line-number="156">	<span class="kw">struct</span> fiber_struct *next, *prev;</a>
+<a class="sourceLine" id="cb13-157" href="#cb13-157" data-line-number="157">	<span class="dt">bool</span> old;</a>
+<a class="sourceLine" id="cb13-158" href="#cb13-158" data-line-number="158">	<span class="kw">struct</span> pt_regs *regs;</a>
+<a class="sourceLine" id="cb13-159" href="#cb13-159" data-line-number="159">	u64 utime, stime;</a></code></pre></div>
+<div class="sourceCode" id="cb14" data-caption="module/fibers_api.c" data-startFrom="177"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb14-177" href="#cb14-177" data-line-number="177">	old = test_and_set_bit(<span class="dv">0</span>, &amp;(next-&gt;state));</a>
+<a class="sourceLine" id="cb14-178" href="#cb14-178" data-line-number="178">	<span class="cf">if</span> (unlikely(old == FIB_RUNNING)) {</a>
+<a class="sourceLine" id="cb14-179" href="#cb14-179" data-line-number="179">		atomic64_inc(&amp;next-&gt;failed_activations);</a>
+<a class="sourceLine" id="cb14-180" href="#cb14-180" data-line-number="180">		<span class="cf">return</span> <span class="dv">-1</span>;</a>
+<a class="sourceLine" id="cb14-181" href="#cb14-181" data-line-number="181">	}</a></code></pre></div>
+<div class="sourceCode" id="cb15" data-caption="module/fibers_api.c" data-startFrom="191"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb15-191" href="#cb15-191" data-line-number="191">	regs = current_pt_regs();</a>
+<a class="sourceLine" id="cb15-192" href="#cb15-192" data-line-number="192">	prev-&gt;exec_context = *regs;</a>
+<a class="sourceLine" id="cb15-193" href="#cb15-193" data-line-number="193">	*regs = next-&gt;exec_context;</a>
+<a class="sourceLine" id="cb15-194" href="#cb15-194" data-line-number="194"></a>
+<a class="sourceLine" id="cb15-195" href="#cb15-195" data-line-number="195">	fpu__save(&amp;prev-&gt;fpuregs);</a>
+<a class="sourceLine" id="cb15-196" href="#cb15-196" data-line-number="196"></a>
+<a class="sourceLine" id="cb15-197" href="#cb15-197" data-line-number="197">	preempt_disable();</a>
+<a class="sourceLine" id="cb15-198" href="#cb15-198" data-line-number="198">	fpu__restore(&amp;next-&gt;fpuregs);</a>
+<a class="sourceLine" id="cb15-199" href="#cb15-199" data-line-number="199">	preempt_enable();</a>
+<a class="sourceLine" id="cb15-200" href="#cb15-200" data-line-number="200"></a>
+<a class="sourceLine" id="cb15-201" href="#cb15-201" data-line-number="201">	test_and_clear_bit(<span class="dv">0</span>, &amp;(prev-&gt;state));</a>
+<a class="sourceLine" id="cb15-202" href="#cb15-202" data-line-number="202"></a>
+<a class="sourceLine" id="cb15-203" href="#cb15-203" data-line-number="203">	current_fiber = next;</a>
+<a class="sourceLine" id="cb15-204" href="#cb15-204" data-line-number="204"></a>
+<a class="sourceLine" id="cb15-205" href="#cb15-205" data-line-number="205">	<span class="cf">return</span> <span class="dv">0</span>;</a>
+<a class="sourceLine" id="cb15-206" href="#cb15-206" data-line-number="206">}</a></code></pre></div>
+<p>First it is checked whether the fiber is already running through an atomic test-and-set on the state of the fiber, in which case the switch simply fails. The switch also fails in case the caller has not performed <code>to_fiber</code> previously. This is ensured by checking whether <code>current_fiber</code> is zero which is safe only if the kernel allocates a zeroed stack to a thread and no stack overflow has happened.</p>
+<p>Then the switch is performed by using the <code>struct pt_regs</code> found at the top of the kernel stack which has been previously pushed by the Linux system call dispatcher. By changing its fields and setting them to the values of the fiber we want to switch to, when the dispatcher will restore the userspace context, will let the execution proceed to the just set context.</p>
+<p>Finally the <em>fpu</em> registers are changed by using the functions provided by the kernel, the previously running fiber is released and the <code>current_fiber</code> is set properly.</p>
+<h3 id="fiber-local-storage">Fiber Local Storage</h3>
+<p>The allocator implemented for fibers is very simple. There is a fixed number of entries kept in <code>fls</code> that can be allocated which are managed by a bitmap keeping one bit for each entry telling whether it’s free (<code>0</code>) or occupied (<code>1</code>).</p>
+<p><strong><code>module/fibers_api.c</code></strong></p>
+<div class="sourceCode" id="cb16" data-caption="module/fibers_api.c" data-startFrom="208"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb16-208" href="#cb16-208" data-line-number="208"><span class="dt">long</span> fls_alloc(<span class="kw">struct</span> fibers_data *fibdata)</a>
+<a class="sourceLine" id="cb16-209" href="#cb16-209" data-line-number="209">{</a>
+<a class="sourceLine" id="cb16-210" href="#cb16-210" data-line-number="210">	<span class="dt">unsigned</span> <span class="dt">long</span> idx;</a>
+<a class="sourceLine" id="cb16-211" href="#cb16-211" data-line-number="211">	<span class="cf">do</span> {</a>
+<a class="sourceLine" id="cb16-212" href="#cb16-212" data-line-number="212">		idx = find_first_zero_bit(fibdata-&gt;bitmap, MAX_FLS);</a>
+<a class="sourceLine" id="cb16-213" href="#cb16-213" data-line-number="213">		<span class="cf">if</span> (idx == MAX_FLS) {</a>
+<a class="sourceLine" id="cb16-214" href="#cb16-214" data-line-number="214">			<span class="cf">return</span> <span class="dv">-1</span>;</a>
+<a class="sourceLine" id="cb16-215" href="#cb16-215" data-line-number="215">		}</a>
+<a class="sourceLine" id="cb16-216" href="#cb16-216" data-line-number="216">	} <span class="cf">while</span> (test_and_set_bit(idx, fibdata-&gt;bitmap));</a>
+<a class="sourceLine" id="cb16-217" href="#cb16-217" data-line-number="217">	<span class="cf">return</span> (<span class="dt">long</span>) idx;</a>
+<a class="sourceLine" id="cb16-218" href="#cb16-218" data-line-number="218">}</a></code></pre></div>
+<div class="sourceCode" id="cb17" data-caption="module/fibers_api.c" data-startFrom="243"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb17-243" href="#cb17-243" data-line-number="243"><span class="dt">bool</span> fls_free(<span class="kw">struct</span> fibers_data * fibdata, <span class="dt">long</span> idx)</a>
+<a class="sourceLine" id="cb17-244" href="#cb17-244" data-line-number="244">{</a>
+<a class="sourceLine" id="cb17-245" href="#cb17-245" data-line-number="245">	clear_bit(idx, fibdata-&gt;bitmap);</a>
+<a class="sourceLine" id="cb17-246" href="#cb17-246" data-line-number="246">	<span class="cf">return</span> true;</a>
+<a class="sourceLine" id="cb17-247" href="#cb17-247" data-line-number="247">}</a></code></pre></div>
+<h2 id="procfs-extension"><code>procfs</code> extension</h2>
+<p>As we have mentioned in the previous parts a <code>.fibers</code> directory is created under <code>/proc</code> at module load and a directory for each thread group id that opens the <code>/dev/fibers</code> file is created under <code>/proc/.fibers</code>. In each directory is added one file for each fiber instantiation of the group.</p>
+<p>In order to make more <em>proc-oriented</em> such information a symbolic link is added to <code>/proc/&lt;tgid&gt;</code> with name <code>fibers</code> pointing to the corresponding <code>/proc/.fibers/&lt;tgid&gt;</code> directory.</p>
+<p>Since the entries under <code>/proc/&lt;tgid&gt;</code> are <a href="https://elixir.bootlin.com/linux/latest/source/fs/proc/base.c#L2902">statically defined</a> at compile time it’s not possible to add such link through a module except by hooking the functions that are called upon listing/moving a/to a directory namely <a href="https://elixir.bootlin.com/linux/latest/source/fs/proc/base.c#L2999"><code>proc_tgid_base_readdir</code></a>, <a href="https://elixir.bootlin.com/linux/latest/source/fs/proc/base.c#L3011"><code>proc_tgid_base_lookup</code></a> respectively stored inside the <code>iter_shared</code> field of <a href="https://elixir.bootlin.com/linux/latest/source/fs/proc/base.c#L3005"><code>proc_tgid_base_operations</code></a> and <code>lookup</code> field of <a href="https://elixir.bootlin.com/linux/latest/source/fs/proc/base.c#L3017"><code>proc_tgid_base_inode_operations</code></a>.</p>
+<p><strong><code>module/proc.c</code></strong></p>
+<div class="sourceCode" id="cb18" data-caption="module/proc.c" data-startFrom="52"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb18-52" href="#cb18-52" data-line-number="52"><span class="dt">static</span> <span class="dt">const</span> <span class="dt">char</span> *hooked_syms_names[] = {</a>
+<a class="sourceLine" id="cb18-53" href="#cb18-53" data-line-number="53">	<span class="st">&quot;proc_pid_link_inode_operations&quot;</span>,</a>
+<a class="sourceLine" id="cb18-54" href="#cb18-54" data-line-number="54">	<span class="st">&quot;proc_fill_cache&quot;</span>,</a>
+<a class="sourceLine" id="cb18-55" href="#cb18-55" data-line-number="55">	<span class="st">&quot;proc_pident_instantiate&quot;</span>,</a>
+<a class="sourceLine" id="cb18-56" href="#cb18-56" data-line-number="56">	<span class="st">&quot;proc_tgid_base_operations&quot;</span>,</a>
+<a class="sourceLine" id="cb18-57" href="#cb18-57" data-line-number="57">	<span class="st">&quot;proc_tgid_base_inode_operations&quot;</span></a>
+<a class="sourceLine" id="cb18-58" href="#cb18-58" data-line-number="58">};</a>
+<a class="sourceLine" id="cb18-59" href="#cb18-59" data-line-number="59"></a>
+<a class="sourceLine" id="cb18-60" href="#cb18-60" data-line-number="60"><span class="dt">static</span> <span class="dt">void</span> *syms[HOOKED_SYMS_MAX];</a></code></pre></div>
+<div class="sourceCode" id="cb19" data-caption="module/proc.c" data-startFrom="185"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb19-185" href="#cb19-185" data-line-number="185"><span class="dt">void</span> hook_symbols(<span class="dt">void</span>)</a>
+<a class="sourceLine" id="cb19-186" href="#cb19-186" data-line-number="186">{</a>
+<a class="sourceLine" id="cb19-187" href="#cb19-187" data-line-number="187">	<span class="dt">int</span> i = <span class="dv">0</span>;</a>
+<a class="sourceLine" id="cb19-188" href="#cb19-188" data-line-number="188"></a>
+<a class="sourceLine" id="cb19-189" href="#cb19-189" data-line-number="189">	<span class="cf">for</span> (i = <span class="dv">0</span>; i &lt; HOOKED_SYMS_MAX; i++) {</a>
+<a class="sourceLine" id="cb19-190" href="#cb19-190" data-line-number="190">		syms[i] = (<span class="dt">void</span> *)kallsyms_lookup_name(hooked_syms_names[i]);</a>
+<a class="sourceLine" id="cb19-191" href="#cb19-191" data-line-number="191">		<span class="cf">if</span> (!syms[i]) {</a>
+<a class="sourceLine" id="cb19-192" href="#cb19-192" data-line-number="192">			warn(<span class="st">&quot;Failed retrieving symbol %s&quot;</span>,</a>
+<a class="sourceLine" id="cb19-193" href="#cb19-193" data-line-number="193">			     hooked_syms_names[i]);</a>
+<a class="sourceLine" id="cb19-194" href="#cb19-194" data-line-number="194">		}</a>
+<a class="sourceLine" id="cb19-195" href="#cb19-195" data-line-number="195">	}</a></code></pre></div>
+<div class="sourceCode" id="cb20" data-caption="module/proc.c" data-startFrom="207"><pre class="sourceCode numberSource lineAnchors numberLines C"><code class="sourceCode c"><a class="sourceLine" id="cb20-207" href="#cb20-207" data-line-number="207">	cr0 = read_cr0();</a>
+<a class="sourceLine" id="cb20-208" href="#cb20-208" data-line-number="208">	unprotect_memory();</a>
+<a class="sourceLine" id="cb20-209" href="#cb20-209" data-line-number="209">	orig_proc_tgid_base_readdir = proc_tgid_base_operations-&gt;iterate_shared;</a>
+<a class="sourceLine" id="cb20-210" href="#cb20-210" data-line-number="210">	proc_tgid_base_operations-&gt;iterate_shared = wrap_proc_tgid_base_readdir;</a>
+<a class="sourceLine" id="cb20-211" href="#cb20-211" data-line-number="211"></a>
+<a class="sourceLine" id="cb20-212" href="#cb20-212" data-line-number="212">	orig_proc_tgid_base_lookup = proc_tgid_base_inode_operations-&gt;lookup;</a>
+<a class="sourceLine" id="cb20-213" href="#cb20-213" data-line-number="213">	proc_tgid_base_inode_operations-&gt;lookup = wrap_proc_tgid_base_lookup;</a>
+<a class="sourceLine" id="cb20-214" href="#cb20-214" data-line-number="214">	protect_memory();</a>
+<a class="sourceLine" id="cb20-215" href="#cb20-215" data-line-number="215">}</a></code></pre></div>
+<p>The hooked <code>readdir</code> first calls the original function to fill the result with the correct directory entries and then similarly to the original function instantiates a new directory entry of type link. In order to do so, the first three symbols in <code>hooked_syms_names</code> and additional re-definitions of not exported structs used and function pointers types are needed.</p>
+<p>Similar operations are taken for <code>lookup</code> but in this case the original function is not invoked if the lookup is for the <code>fibers</code> directory.</p>
+<h2 id="performance">Performance</h2>
+<figure>
+<img src="images/perf.svg" alt="FlameGraph Interactive view" style="width:100.0%" /><figcaption><a href="images/perf.svg">FlameGraph Interactive view</a></figcaption>
+</figure>
+<p>The FlameGraph produced by <code>perf</code> shows that a good amount of time in the simulation is spent inside the <code>fls_get</code> function. Note that the graph is slightly broken since the initial frame-pointers are not properly set for the stacks of the created fibers producing the <code>[unknown]</code> tag.</p>
+<p>The thread leader instead creates the fibers and then calls the <code>main_loop</code> as shown in the graph with the block on top of <code>main</code>.</p>
+<p><img src="images/user.png" class="center" style="width:70.0%" /> <img src="images/kernel.png" class="center" style="width:70.0%" /></p>
+<p>As expected, the module based implementation has no performance advantages over the <em>sigaltstack</em> based one. This is due to the fact that calls to the apis provided require a mode switch producing a double cost with respect to the sigaltstack implementation since on a switch first the registers are saved on stack by the Linux system call dispatcher and then copied on the <code>fiber_struct</code> by the module. Same goes for the <code>fls_get</code> calls which as well require a mode switch.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>Overall the module has good performances and integrates smoothly with the kernel. A good amount of time for the project has been spent in the design choices trying to find the right data structures fitting the needs of the project. The library and the module can be extended with asynchronous I/O, multiple fibers pools per process and channels to communicate between fibers.</p>
+<section class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>The implementation uses the recent <em><a href="https://lwn.net/Articles/745073/">xarray</a></em> interface and assumes a zeroed kernel stack.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>We use the term <em>file descriptor</em> to indicate both the <code>struct file</code> kept by the kernel to describe file opened by a process and the number returned to the process to identify the instance.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+</ol>
+</section>
+</body>
+</html>
