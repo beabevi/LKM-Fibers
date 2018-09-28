@@ -209,12 +209,12 @@ long fls_alloc(struct fibers_data *fibdata)
 {
 	unsigned long idx;
 	do {
-		idx = find_first_zero_bit(fibdata->bitmap, FLS_BSIZE);
-		if (idx == FLS_BSIZE) {
+		idx = find_first_zero_bit(fibdata->bitmap, MAX_FLS);
+		if (idx == MAX_FLS) {
 			return -1;
 		}
 	} while (test_and_set_bit(idx, fibdata->bitmap));
-	return idx;
+	return (long) idx;
 }
 
 long fls_get(struct fibers_data *fibdata, struct fls_data __user * data)

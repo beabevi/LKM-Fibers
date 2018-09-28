@@ -98,7 +98,7 @@ static int device_open(struct inode *inode, struct file *file)
 	// Initialization of fibers pool idr
 	idr_init(&fibdata->fibers_pool);
 
-	bitmap_clear(fibdata->bitmap, 0, FLS_BSIZE);
+	bitmap_clear(fibdata->bitmap, 0, MAX_FLS);
 
 	file->private_data = fibdata;
 

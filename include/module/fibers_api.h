@@ -7,6 +7,7 @@
 #include <linux/uaccess.h>
 #include <asm/fpu/internal.h>
 #include <linux/sched/cputime.h>
+#include <asm/bitops.h>
 
 #include <common.h>
 
