@@ -8,7 +8,7 @@
 
 #include <klog.h>
 
-void hijack_symbols(void);
+void hook_symbols(void);
 void restore_symbols(void);
 
 #endif

@@ -100,9 +100,10 @@ void *create_fiber(size_t stack_size, void (*entry_point) (void *), void *param)
 
 	struct create_data data = {
 		// x86-64 System-V ABI requires stack to be aligned at 16 byte before
-		// issuing a `call` and compilers assume this when compiling the entry
-		// points of fibers. Therefore in order to emulate a call we need to remove
-		// 8 bytes as if there was the return address to the caller.
+		// issuing a `call` and compilers assume this when compiling the
+		// entry points of fibers. Therefore in order to emulate a call we
+		// need to remove 8 bytes as if there was the return address to the
+		// caller.
 		.stack = (void *)(((unsigned long)stack) + stack_size - 8),
 		.entry_point = entry_point,
 		.param = param

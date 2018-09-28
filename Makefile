@@ -1,16 +1,16 @@
 EXTRA_CFLAGS := -I$(src)/include/module
 
 obj-m += fibers.o
-fibers-objs := module/fibers.o module/fibers_api.o module/pork.o
+fibers-objs := module/fibers.o module/fibers_api.o module/proc.o
 
 pretty-files := lib/fibers.c                \
                 module/fibers.c             \
                 module/fibers_api.c         \
-                module/pork.c               \
+                module/proc.c               \
                 include/module/common.h     \
                 include/module/fibers_api.h \
                 include/module/fibers.h     \
-                include/module/pork.h       \
+                include/module/proc.h       \
                 include/module/klog.h
 
 all:

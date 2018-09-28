@@ -1,4 +1,4 @@
-#include <pork.h>
+#include <proc.h>
 
 typedef struct dentry *(*proc_pident_instantiate_t) (struct dentry *,
 						     struct task_struct *,
@@ -40,16 +40,16 @@ static struct inode_operations *proc_tgid_base_inode_operations;
 
 static struct pid_entry fibers_link;
 
-enum hijacked_syms {
+enum hooked_syms {
 	PROC_PID_LINK_INODE_OPERATIONS,
 	PROC_FILL_CACHE,
 	PROC_PIDENT_INSTANTIATE,
 	PROC_TGID_BASE_OPERATIONS,
 	PROC_TGID_BASE_INODE_OPERATIONS,
-	HIJACKED_SYMS_MAX
+	HOOKED_SYMS_MAX
 };
 
-static const char *hijacked_syms_names[] = {
+static const char *hooked_syms_names[] = {
 	"proc_pid_link_inode_operations",
 	"proc_fill_cache",
 	"proc_pident_instantiate",
@@ -57,7 +57,7 @@ static const char *hijacked_syms_names[] = {
 	"proc_tgid_base_inode_operations"
 };
 
-static void *syms[HIJACKED_SYMS_MAX];
+static void *syms[HOOKED_SYMS_MAX];
 
 static unsigned long cr0;
 
@@ -182,15 +182,15 @@ static inline void unprotect_memory(void)
 	write_cr0(cr0 & ~0x00010000);
 }
 
-void hijack_symbols(void)
+void hook_symbols(void)
 {
 	int i = 0;
 
-	for (i = 0; i < HIJACKED_SYMS_MAX; i++) {
-		syms[i] = (void *)kallsyms_lookup_name(hijacked_syms_names[i]);
+	for (i = 0; i < HOOKED_SYMS_MAX; i++) {
+		syms[i] = (void *)kallsyms_lookup_name(hooked_syms_names[i]);
 		if (!syms[i]) {
 			warn("Failed retrieving symbol %s",
-			     hijacked_syms_names[i]);
+			     hooked_syms_names[i]);
 		}
 	}
 

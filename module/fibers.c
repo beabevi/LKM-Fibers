@@ -30,7 +30,7 @@ void initialize_proc(void)
 		warn("Failed proc\n");
 		proc_remove(fibers_dir);
 	}
-	hijack_symbols();
+	hook_symbols();
 }
 
 /*

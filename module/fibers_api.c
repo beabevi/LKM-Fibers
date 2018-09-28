@@ -54,7 +54,6 @@ static inline void fiber_init_stopped(struct fiber_struct *f,
 	f->exec_context.sp = (unsigned long)data->stack;
 	f->exec_context.ip = (unsigned long)data->entry_point;
 	f->exec_context.di = (unsigned long)data->param;
-	//f->exec_context.flags = 0UL;
 	fiber_setup_stats(f, f->exec_context.ip);
 }
 
@@ -91,6 +90,7 @@ long to_fiber(struct fibers_data *fibdata)
 	fid_t id;
 	struct fiber_struct *f =
 	    kzalloc(sizeof(struct fiber_struct), GFP_KERNEL);
+	u64 utime, stime;
 
 	if (unlikely(!f)) {
 		warn("Failed fiber_struct allocation (%d)\n", current->pid);
@@ -106,6 +106,11 @@ long to_fiber(struct fibers_data *fibdata)
 		warn("Failed to convert thread (%d) to fiber\n", current->pid);
 		return -1;
 	}
+
+	task_cputime_adjusted(current, &utime, &stime);
+	f->laststart_utime = utime;
+	f->laststart_stime = stime;
+
 	// Save current running fiber at the bottom of the kernel stack
 	// of the thread it is running on
 	current_fiber = f;
