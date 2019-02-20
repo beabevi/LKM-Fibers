@@ -15,7 +15,7 @@ title: Loadable Kernel Module based Fibers
 -   [Performance](#performance)
 -   [Conclusions](#conclusions)
 
-![Project overview](images/diagram.png){width="100%"}
+![Project overview](images/diagram.png)
 
 Introduction
 ------------
@@ -539,7 +539,7 @@ Performance
 -----------
 
 ![[FlameGraph Interactive
-view](images/perf.svg)](images/perf.svg){width="100%"}
+view](images/perf.svg)](images/perf.svg)
 
 The FlameGraph produced by `perf` shows that a good amount of time in
 the simulation is spent inside the `fls_get` function. Note that the
@@ -550,8 +550,7 @@ properly set for the stacks of the created fibers producing the
 The thread leader instead creates the fibers and then calls the
 `main_loop` as shown in the graph with the block on top of `main`.
 
-![](images/user.png){.center width="70%"} ![](images/kernel.png){.center
-width="70%"}
+![](images/user.png) ![](images/kernel.png)
 
 As expected, the module based implementation has no performance
 advantages over the *sigaltstack* based one. This is due to the fact
